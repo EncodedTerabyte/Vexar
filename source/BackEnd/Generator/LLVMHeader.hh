@@ -1,0 +1,16 @@
+#pragma once
+
+#include "../LLVM/Include.hh"
+
+#include <memory>
+#include <iostream>
+#include <stdint.h>
+#include <vector>
+#include <unordered_map>
+#include <set>
+#include <string>
+#include <filesystem>
+
+#include "../../MiddleEnd/AST.hh"
+
+namespace fs = std::filesystem;

@@ -1,0 +1,27 @@
+Vexar Source License (VSL)
+Copyright (c) 2025 EncodedTerabyte
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to use, copy, modify, merge, publish, distribute, and sublicense copies of the Software, including for commercial purposes, subject to the following conditions:
+
+1. Open Source Requirement
+   - Any fork, derivative work, or substantial usage of the Software must remain fully open source and licensed under this exact license.
+   - No alternative license may be applied to any fork or derivative, including modifications, adaptations, or usage of substantial portions of the code.
+
+2. Free Distribution
+   - The Software, and all forks or derivatives, must be distributed entirely for free.
+   - Paid or restricted access models (freemium, donationware, gated features) that limit core functionality are not permitted.
+
+3. Optional Paid Addons
+   - Forks may offer paid, closed-source addons, extensions, or plugins only if:
+       * The base Software remains fully functional and usable without the paid components.
+       * Paid components do not restrict access to core features required for typical use.
+       * Paid components are supplementary, not essential to the primary functionality.
+
+4. Attribution
+   - Any public use or distribution of the Software or derivatives must credit:
+       * "EncodedTerabyte" as the original author.
+       * The original repository: "Vexar".
+       * Any forked repositories or derivative works utilized.
+   - Attribution is not required for unrelated third-party resources not covered by this license.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

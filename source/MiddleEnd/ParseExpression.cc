@@ -1,0 +1,47 @@
+#include "ParseExpression.hh"
+#include "AST.hh"
+#include "Expressions/FunctionExpression.hh"
+#include "Expressions/ReturnExpression.hh"
+#include "Expressions/StringExpression.hh"
+#include "Nodes/ParenNode.hh"
+
+std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, const std::set<std::string>& stopTokens) {
+    const Token& tok = parser.peek();
+
+    if (tok.type == TokenType::Number ||
+        tok.type == TokenType::Float ||
+        tok.type == TokenType::Identifier ||
+        (tok.type == TokenType::Delimiter && tok.value == "(") ||
+        (tok.type == TokenType::Operator && 
+         (tok.value == "-" || tok.value == "+" || tok.value == "!" || tok.value == "~"))) {
+        return NumberExpression::Parse(parser, precedence, stopTokens);
+    }
+
+    if (tok.value == "var") {
+        return VariableExpression::Parse(parser);
+    }
+    if (tok.value == "if") {
+        return IfStatementExpression::Parse(parser);
+    }
+    if (tok.value == "while") {
+        return WhileStatementExpression::Parse(parser);
+    }
+    if (tok.value == "ret") {
+        return ReturnExpression::Parse(parser);
+    }
+    if (tok.value == "func") {
+        return FunctionExpression::Parse(parser);
+    }
+    if (tok.type == TokenType::Operator && tok.value == "=") {
+        return AssignmentExpression::Parse(parser);
+    }
+    if (tok.type == TokenType::Delimiter && tok.value == "{") {
+        return BlockNodeContainer::ParseBlock(parser);
+    }
+    if (tok.type == TokenType::String || tok.type == TokenType::Character) {
+        return StringExpression::Parse(parser, precedence, stopTokens);
+    }
+    
+    parser.advance();
+    return nullptr;
+}
