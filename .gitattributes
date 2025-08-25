@@ -1,0 +1,6 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+*.vex linguist-language=Vexar
+*.vx linguist-language=Vexar
+*.vxr linguist-language=Vexar
+*.vexar linguist-language=Vexar
