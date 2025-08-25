@@ -3,3 +3,8 @@ build/
 buildsystem/
 lib/
 bin/
+*.ll
+*.o
+*.exe
+*.vxr
+commit.bat
