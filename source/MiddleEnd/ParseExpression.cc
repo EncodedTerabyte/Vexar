@@ -42,6 +42,7 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
             return BlockNodeContainer::ParseBlock(parser);
         }
     }
+    
     if (tok.type == TokenType::String || tok.type == TokenType::Character) {
         return StringExpression::Parse(parser, precedence, stopTokens);
     }
