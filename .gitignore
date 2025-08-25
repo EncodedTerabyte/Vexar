@@ -2,3 +2,4 @@ build.bat
 build/
 buildsystem/
 lib/
+bin/
