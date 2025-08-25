@@ -73,6 +73,7 @@ public:
 
     void BuildLLVM();
     void PrintLLVM();
+    void ValidateModule();
     void OptimiseLLVM();
     void Compile();
     void Link(const std::string& ObjectFile);

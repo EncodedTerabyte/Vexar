@@ -30,6 +30,28 @@ const Token& Parser::consume(int tokenType, const std::string& expectedValue) {
     return tok;
 }
 
+bool Parser::check(int tokenType, const std::string& expectedValue) const {
+    const Token& tok = peek();
+    if (tok.type != tokenType) return false;
+    if (!expectedValue.empty() && tok.value != expectedValue) return false;
+    return true;
+}
+
+const Token& Parser::expect(int tokenType, const std::string& expectedValue) {
+    if (check(tokenType, expectedValue)) {
+        return advance();
+    }
+    Write("Parser", "Expected token: " + expectedValue + " but got: " + peek().value, 2, true);
+    return peek();
+}
+
+bool Parser::lookahead(int offset, int tokenType, const std::string& expectedValue) const {
+    const Token& tok = peek(offset);
+    if (tok.type != tokenType) return false;
+    if (!expectedValue.empty() && tok.value != expectedValue) return false;
+    return true;
+}
+
 bool Parser::isAtEnd() const {
     return index >= tokens.size() || tokens[index].type == TokenType::EndOfFile;
 }

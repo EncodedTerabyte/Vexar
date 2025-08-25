@@ -12,5 +12,6 @@
 #include <filesystem>
 
 #include "../../MiddleEnd/AST.hh"
+#include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 namespace fs = std::filesystem;

@@ -29,6 +29,8 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
         } else {
             IdentifiedType = Value->getType();
         }
+    } else if (Type == "string") {
+        IdentifiedType = llvm::PointerType::get(Builder.getContext(), 0);
     } else {
         IdentifiedType = GetLLVMTypeFromString(Type, Builder.getContext());
     }

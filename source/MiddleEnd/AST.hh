@@ -26,6 +26,9 @@ struct NodeType {
     static constexpr int FunctionCall = 17;
     static constexpr int Block = 18;
     static constexpr int Condition = 19;
+    static constexpr int Cast = 20;
+    static constexpr int Array = 21;
+    static constexpr int ArrayAccess = 22;
 };
 
 struct ASTNode {
@@ -172,17 +175,28 @@ struct VariableNode : ASTNode {
     std::string name;
     TypeNode varType;
     std::unique_ptr<ASTNode> value;
+    std::unique_ptr<ASTNode> arrayExpression;
 
     VariableNode() : varType("auto") {}
 
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         std::string result = branch(prefix, isLast) + "[Variable]: " + name + " : " + varType.name;
+
+        if (arrayExpression) {
+            bool arrIsLast = !value;
+            result += "\n" + branch(prefix, arrIsLast) + "[Array Expression]";
+            result += "\n" + arrayExpression->get(nextPrefix(prefix, arrIsLast), true);
+        }
+
         if (value) {
             result += "\n" + value->get(nextPrefix(prefix, isLast), true);
         }
+
         return result;
     }
+
 };
+
 
 struct AssignmentOpNode : public ASTNode {
     std::unique_ptr<ASTNode> left;
@@ -390,5 +404,52 @@ struct BooleanNode : ASTNode {
 
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         return branch(prefix, isLast) + "[Boolean]: " + (value ? "true" : "false");
+    }
+};
+
+struct CastNode : ASTNode {
+    std::unique_ptr<ASTNode> expr;
+    std::string targetType;
+
+    CastNode() { type = NodeType::Cast; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Cast] -> " << targetType;
+        if (expr) {
+            oss << "\n" << expr->get(nextPrefix(prefix, isLast), true);
+        }
+        return oss.str();
+    }
+};
+
+struct ArrayNode : ASTNode {
+    std::vector<std::unique_ptr<ASTNode>> elements;
+
+    ArrayNode() { type = -1; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Array]";
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        for (size_t i = 0; i < elements.size(); ++i) {
+            bool last = (i == elements.size() - 1);
+            oss << "\n" << elements[i]->get(childPrefix, last);
+        }
+        return oss.str();
+    }
+};
+
+struct ArrayAccessNode : ASTNode {
+    std::string identifier;
+    std::unique_ptr<ASTNode> expr;
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Array Access]: " << identifier;
+        if (expr) {
+            oss << "\n" << expr->get(nextPrefix(prefix, isLast), true);
+        }
+        return oss.str();
     }
 };

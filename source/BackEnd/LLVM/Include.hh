@@ -32,3 +32,5 @@
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/IR/PassManager.h"
 #include "lld/Common/Driver.h"
+
+#include "llvm/IR/Verifier.h"

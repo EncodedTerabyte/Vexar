@@ -25,10 +25,16 @@ bool IsRightAssociative(const Token& tok) {
    return tok.type == TokenType::Operator && tok.value == "^";
 }
 
+bool IsTypeName(const std::string& name) {
+    static std::set<std::string> types = {
+        "int", "uint", "float", "double", "char", "bool", "string", "void"
+    };
+    return types.count(name) > 0;
+}
+
 namespace NumberExpression {
    std::unique_ptr<ASTNode> ParsePrimary(Parser& parser, const std::set<std::string>& stopTokens, bool& hasNumbers, bool& hasStrings) {
        const Token& tok = parser.peek();
-
        if (stopTokens.count(tok.value)) return nullptr;
 
        if (tok.type == TokenType::Number || tok.type == TokenType::Float) {
@@ -67,18 +73,41 @@ namespace NumberExpression {
 
        if (tok.type == TokenType::Delimiter && tok.value == "(") {
            parser.advance();
-           auto inner = ParseBinary(parser, 0, stopTokens, hasNumbers, hasStrings);
-           if (parser.peek().type != TokenType::Delimiter || parser.peek().value != ")") {
-               Write("Number Expression", "Expected ')'", 2, true);
+           const Token& nextTok = parser.peek();
+           
+           if (nextTok.type == TokenType::Identifier && IsTypeName(nextTok.value)) {
+               std::string typeName = nextTok.value;
+               parser.advance();
+               
+               if (parser.peek().type == TokenType::Delimiter && parser.peek().value == ")") {
+                   parser.advance();
+                   auto expr = ParseUnary(parser, stopTokens, hasNumbers, hasStrings);
+                   auto castNode = std::make_unique<CastNode>();
+                   castNode->type = NodeType::Cast;
+                   castNode->targetType = typeName;
+                   castNode->expr = std::move(expr);
+                   return castNode;
+               } else {
+                   auto identNode = std::make_unique<IdentifierNode>();
+                   identNode->type = NodeType::Identifier;
+                   identNode->name = typeName;
+                   auto parenNode = std::make_unique<ParenNode>();
+                   parenNode->type = NodeType::Paren;
+                   parenNode->inner = std::move(identNode);
+                   return parenNode;
+               }
+           } else {
+               auto inner = ParseBinary(parser, 0, stopTokens, hasNumbers, hasStrings);
+               if (parser.peek().type == TokenType::Delimiter && parser.peek().value == ")") {
+                   parser.advance();
+               }
+               auto parenNode = std::make_unique<ParenNode>();
+               parenNode->type = NodeType::Paren;
+               parenNode->inner = std::move(inner);
+               return parenNode;
            }
-           parser.advance();
-           auto parenNode = std::make_unique<ParenNode>();
-           parenNode->type = NodeType::Paren;
-           parenNode->inner = std::move(inner);
-           return parenNode;
        }
 
-       Write("Number Expression", "Unexpected token: " + tok.value, 2, true);
        return nullptr;
    }
 
@@ -93,7 +122,6 @@ namespace NumberExpression {
            if (tokPrec < precedence) break;
 
            if (hasNumbers && hasStrings) {
-               Write("Number Expression", "Mixed string and numeric expressions are not allowed", 2, true);
                return nullptr;
            }
 
@@ -101,8 +129,11 @@ namespace NumberExpression {
            int nextPrec = IsRightAssociative(tok) ? tokPrec : tokPrec + 1;
            auto right = ParseBinary(parser, nextPrec, stopTokens, hasNumbers, hasStrings);
            
+           if (!right) {
+               return nullptr;
+           }
+           
            if (hasNumbers && hasStrings) {
-               Write("Number Expression", "Mixed string and numeric expressions are not allowed", 2, true);
                return nullptr;
            }
 

@@ -22,27 +22,15 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
         } else if (Statement->type == NodeType::Return) {
             auto* Ret = static_cast<ReturnNode*>(Statement.get());
             
-            std::cout << "Processing return statement..." << std::endl;
-            
-            llvm::Value* Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
-            
-            std::cout << "Return value type: ";
-            if (Value) {
-                Value->getType()->print(llvm::errs());
-                std::cout << std::endl;
-                if (llvm::ConstantInt* CI = llvm::dyn_cast<llvm::ConstantInt>(Value)) {
-                    std::cout << "Constant int value: " << CI->getSExtValue() << std::endl;
-                } else if (llvm::ConstantFP* CF = llvm::dyn_cast<llvm::ConstantFP>(Value)) {
-                    std::cout << "Constant float value: " << CF->getValueAPF().convertToDouble() << std::endl;
-                }
-            } else {
-                std::cout << "nullptr" << std::endl;
+            llvm::Value* Value = nullptr;
+            if (Ret->value) {
+                Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
             }
-
+            
             llvm::Function* CurrentFunc = Builder.GetInsertBlock()->getParent();
             llvm::Type* ReturnType = CurrentFunc->getReturnType();
 
-            if (Value->getType() != ReturnType) {
+            if (Value && Value->getType() != ReturnType) {
                 if (ReturnType->isIntegerTy() && Value->getType()->isFloatingPointTy()) {
                     Value = Builder.CreateFPToSI(Value, ReturnType, "fptosi");
                 } else if (ReturnType->isFloatingPointTy() && Value->getType()->isIntegerTy()) {
@@ -58,12 +46,29 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 }
             }
             
-            Builder.CreateRet(Value);
+            if (Value) {
+                Builder.CreateRet(Value);
+            } else {
+                if (ReturnType->isVoidTy()) {
+                    Builder.CreateRetVoid();
+                } else {
+                    llvm::Value* defaultValue;
+                    if (ReturnType->isFloatingPointTy()) {
+                        defaultValue = llvm::ConstantFP::get(ReturnType, 0.0);
+                    } else if (ReturnType->isIntegerTy()) {
+                        defaultValue = llvm::ConstantInt::get(ReturnType, 0);
+                    } else if (ReturnType->isPointerTy()) {
+                        defaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
+                    } else {
+                        defaultValue = llvm::UndefValue::get(ReturnType);
+                    }
+                    Builder.CreateRet(defaultValue);
+                }
+            }
         } else if (Statement->type == NodeType::FunctionCall) {
             auto* FuncCall = static_cast<FunctionCallNode*>(Statement.get());
             GenerateExpression(Statement, Builder, SymbolStack, Methods);
         }
-        
     }
     
     PopScope(SymbolStack);

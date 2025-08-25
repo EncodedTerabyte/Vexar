@@ -20,6 +20,14 @@ namespace VariableExpression {
             Token typeTok = parser.peek();
             parser.advance();
             node->varType.name = typeTok.value;
+
+            if (parser.peek().type == TokenType::Delimiter && parser.peek().value == "[") {
+                parser.advance(); // consume [
+
+                node->arrayExpression = Main::ParseExpression(parser, 0, {"]"});
+                parser.consume(TokenType::Delimiter, "]");
+            }
+
         }
 
         const Token& assignTok = parser.peek();

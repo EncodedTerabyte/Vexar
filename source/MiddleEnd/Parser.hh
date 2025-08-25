@@ -9,9 +9,6 @@
 #include <set>
 
 class Parser {
-    const std::vector<Token>& tokens;
-    size_t index = 0;
-
 public:
     Parser(const std::vector<Token>& t);
 
@@ -19,5 +16,12 @@ public:
     const Token& advance();
     bool match(int tokenType);
     const Token& consume(int tokenType, const std::string& expectedValue = "");
+    bool check(int tokenType, const std::string& expectedValue = "") const;
+    const Token& expect(int tokenType, const std::string& expectedValue = "");
+    bool lookahead(int offset, int tokenType, const std::string& expectedValue = "") const;
     bool isAtEnd() const;
+
+private:
+    std::vector<Token> tokens;
+    size_t index = 0;
 };

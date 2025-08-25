@@ -32,6 +32,20 @@ namespace IdentifierExpression {
             return callNode;
         }
 
+        if (nextTok.value == "[") {
+            parser.advance();
+            auto accessNode = std::make_unique<ArrayAccessNode>();
+            accessNode->type = NodeType::ArrayAccess;
+            accessNode->identifier = node->name;
+            accessNode->expr = Main::ParseExpression(parser, 0, {"]"});
+
+            if (parser.peek().value == "]") {
+                parser.advance();
+            }
+
+            return accessNode;
+        }
+
         if (nextTok.type == TokenType::Operator) {
             if (nextTok.value == "++" || nextTok.value == "--") {
                 Token opTok = parser.advance();

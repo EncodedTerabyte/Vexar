@@ -9,6 +9,7 @@
 #include "Expressions/IdentifierExpression.hh"
 #include "Expressions/AssignmentExpression.hh"
 #include "Expressions/StringExpression.hh"
+#include "Expressions/ArrayExpression.hh"
 
 // keywords
 #include "Expressions/VariableExpression.hh"

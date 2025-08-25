@@ -1,5 +1,2 @@
-
-
-func main(): int {
-    print("Hello, World!")
-}
+var x: int[5+3] = {3+4}
+x[0 + 5]
