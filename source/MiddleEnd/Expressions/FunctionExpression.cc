@@ -16,12 +16,15 @@ namespace FunctionExpression {
         funcNode->type = NodeType::Function;
         funcNode->name = nameTok.value;
 
-        if (inline_q.value == "inline") {
-            funcNode->isInlined = true;    
-        } else {
-            funcNode->isInlined = false;
-        }
+        funcNode->isInlined = false;
+        funcNode->alwaysInline = false;
 
+        if (inline_q.value == "inline") {
+            funcNode->isInlined = true;
+        } else if (inline_q.value == "always_inline") {
+            funcNode->alwaysInline = true;
+        }
+        
         if (parser.peek().value == "(") {
             parser.advance();
             while (parser.peek().value != ")") {

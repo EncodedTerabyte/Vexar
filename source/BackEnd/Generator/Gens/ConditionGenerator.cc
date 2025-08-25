@@ -1,21 +1,20 @@
 #include "ConditionGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* ResolveIdentifier(const std::string& name, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap) {
-    auto it = AllocaMap.find(name);
-    if (it != AllocaMap.end()) {
-        llvm::AllocaInst* AllocaInst = it->second;
+llvm::Value* ResolveIdentifier(const std::string& name, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack) {
+    llvm::AllocaInst* AllocaInst = FindInScopes(SymbolStack, name);
+    if (AllocaInst) {
         return Builder.CreateLoad(AllocaInst->getAllocatedType(), AllocaInst, name.c_str());
     }
     return nullptr;
 }
 
-llvm::Value* GenerateCondition(ConditionNode* Node, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap) {
+llvm::Value* GenerateCondition(ConditionNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
     if (!Node->expression) return nullptr;
-    return GenerateConditionExpression(Node->expression, Builder, AllocaMap);
+    return GenerateConditionExpression(Node->expression, Builder, SymbolStack, Methods);
 }
 
-llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap) {
+llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
     if (!expr) return nullptr;
     
     if (expr->type == NodeType::Boolean) {
@@ -25,14 +24,14 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
 
     if (expr->type == NodeType::Paren) {
         auto* parenNode = static_cast<ParenNode*>(expr.get());
-        return GenerateConditionExpression(parenNode->inner, Builder, AllocaMap);
+        return GenerateConditionExpression(parenNode->inner, Builder, SymbolStack, Methods);
     }
 
     if (expr->type == NodeType::BinaryOp) {
         auto* binOpNode = static_cast<BinaryOpNode*>(expr.get());
 
         if (binOpNode->op == "&&") {
-            llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, AllocaMap);
+            llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, SymbolStack, Methods);
             if (!left) return nullptr;
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
@@ -42,7 +41,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             Builder.CreateCondBr(left, rhsBB, endBB);
             
             Builder.SetInsertPoint(rhsBB);
-            llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, AllocaMap);
+            llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, SymbolStack, Methods);
             if (!right) return nullptr;
             Builder.CreateBr(endBB);
             rhsBB = Builder.GetInsertBlock();
@@ -52,11 +51,11 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             phi->addIncoming(llvm::ConstantInt::getFalse(Builder.getContext()), Builder.GetInsertBlock()->getSinglePredecessor());
             phi->addIncoming(right, rhsBB);
             
-            return phi; // Return i1 directly, no extension
+            return phi;
         }
         
         if (binOpNode->op == "||") {
-            llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, AllocaMap);
+            llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, SymbolStack, Methods);
             if (!left) return nullptr;
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
@@ -66,7 +65,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             Builder.CreateCondBr(left, endBB, rhsBB);
             
             Builder.SetInsertPoint(rhsBB);
-            llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, AllocaMap);
+            llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, SymbolStack, Methods);
             if (!right) return nullptr;
             Builder.CreateBr(endBB);
             rhsBB = Builder.GetInsertBlock();
@@ -76,16 +75,45 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             phi->addIncoming(llvm::ConstantInt::getTrue(Builder.getContext()), Builder.GetInsertBlock()->getSinglePredecessor());
             phi->addIncoming(right, rhsBB);
             
-            return phi; // Return i1 directly, no extension
+            return phi;
         }
 
-        llvm::Value* left = GenerateExpression(binOpNode->left, Builder, AllocaMap);
-        llvm::Value* right = GenerateExpression(binOpNode->right, Builder, AllocaMap);
+        llvm::Value* left = GenerateExpression(binOpNode->left, Builder, SymbolStack, Methods);
+        llvm::Value* right = GenerateExpression(binOpNode->right, Builder, SymbolStack, Methods);
         
         if (!left || !right) return nullptr;
 
         llvm::Type* leftType = left->getType();
         llvm::Type* rightType = right->getType();
+
+        if (leftType->isPointerTy() && rightType->isPointerTy()) {
+            llvm::Function* strcmpFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcmp");
+            if (!strcmpFunc) {
+                llvm::FunctionType* strcmpType = llvm::FunctionType::get(
+                    llvm::Type::getInt32Ty(Builder.getContext()),
+                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
+                    false
+                );
+                strcmpFunc = llvm::Function::Create(strcmpType, llvm::Function::ExternalLinkage, "strcmp", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+
+            llvm::Value* cmpResult = Builder.CreateCall(strcmpFunc, {left, right});
+            llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), 0);
+
+            if (binOpNode->op == "==") {
+                return Builder.CreateICmpEQ(cmpResult, zero, "streq");
+            } else if (binOpNode->op == "!=") {
+                return Builder.CreateICmpNE(cmpResult, zero, "strne");
+            } else if (binOpNode->op == "<") {
+                return Builder.CreateICmpSLT(cmpResult, zero, "strlt");
+            } else if (binOpNode->op == "<=") {
+                return Builder.CreateICmpSLE(cmpResult, zero, "strle");
+            } else if (binOpNode->op == ">") {
+                return Builder.CreateICmpSGT(cmpResult, zero, "strgt");
+            } else if (binOpNode->op == ">=") {
+                return Builder.CreateICmpSGE(cmpResult, zero, "strge");
+            }
+        }
         
         if (leftType != rightType) {
             if (leftType->isFloatingPointTy() && rightType->isIntegerTy()) {
@@ -126,7 +154,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
         }
     }
 
-    llvm::Value* exprValue = GenerateExpression(expr, Builder, AllocaMap);
+    llvm::Value* exprValue = GenerateExpression(expr, Builder, SymbolStack, Methods);
     if (exprValue) {
         if (!exprValue->getType()->isIntegerTy(1)) {
             if (exprValue->getType()->isFloatingPointTy()) {

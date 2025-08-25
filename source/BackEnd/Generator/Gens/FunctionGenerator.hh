@@ -4,4 +4,4 @@
 #include "../Helper/Types.hh"
 #include "../LLVMHeader.hh"
 
-llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, AllocaSymbols& AllocaMap);
+llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, AllocaSymbols& AllocaMap, FunctionSymbols& Methods);

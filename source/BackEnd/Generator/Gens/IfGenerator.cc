@@ -2,56 +2,76 @@
 #include "BlockGenerator.hh"
 #include "ConditionGenerator.hh"
 
-llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap) {
+llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods) {
     if (!Node || Node->branches.empty()) return nullptr;
 
     llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
+    
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(Builder.getContext(), "ifcont");
+    
     std::vector<llvm::BasicBlock*> conditionBBs;
     std::vector<llvm::BasicBlock*> bodyBBs;
-    llvm::BasicBlock* elseBB = nullptr;
-    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(Builder.getContext(), "ifcont", currentFunc);
-
+    
     for (size_t i = 0; i < Node->branches.size(); ++i) {
         conditionBBs.push_back(llvm::BasicBlock::Create(Builder.getContext(), "cond" + std::to_string(i), currentFunc));
         bodyBBs.push_back(llvm::BasicBlock::Create(Builder.getContext(), "body" + std::to_string(i), currentFunc));
     }
 
+    llvm::BasicBlock* elseBB = nullptr;
     if (Node->elseBlock) {
         elseBB = llvm::BasicBlock::Create(Builder.getContext(), "else", currentFunc);
     }
 
     Builder.CreateBr(conditionBBs[0]);
 
+    bool mergeNeeded = false;
+
     for (size_t i = 0; i < Node->branches.size(); ++i) {
         const auto& branch = Node->branches[i];
-        Builder.SetInsertPoint(conditionBBs[i]);
         
-        llvm::Value* condValue = GenerateCondition(branch.condition.get(), Builder, AllocaMap);
-        if (!condValue) return nullptr;
-
-        llvm::BasicBlock* nextBlock = nullptr;
-        if (i + 1 < Node->branches.size()) {
-            nextBlock = conditionBBs[i + 1];
-        } else if (elseBB) {
-            nextBlock = elseBB;
-        } else {
-            nextBlock = mergeBB;
+        Builder.SetInsertPoint(conditionBBs[i]);
+        llvm::Value* condValue = GenerateCondition(branch.condition.get(), Builder, AllocaMap, Methods);
+        if (!condValue) {
+            mergeBB->deleteValue();
+            return nullptr;
         }
 
-        Builder.CreateCondBr(condValue, bodyBBs[i], nextBlock);
+        llvm::BasicBlock* nextCondition = (i + 1 < Node->branches.size()) ? conditionBBs[i + 1] : 
+                                         (elseBB ? elseBB : mergeBB);
+
+        Builder.CreateCondBr(condValue, bodyBBs[i], nextCondition);
 
         Builder.SetInsertPoint(bodyBBs[i]);
-        GenerateBlock(branch.block, Builder, AllocaMap);
-        Builder.CreateBr(mergeBB);
+        PushScope(AllocaMap);
+        GenerateBlock(branch.block, Builder, AllocaMap, Methods);
+        PopScope(AllocaMap);
+        
+        if (!Builder.GetInsertBlock()->getTerminator()) {
+            Builder.CreateBr(mergeBB);
+            mergeNeeded = true;
+        }
     }
 
     if (elseBB) {
         Builder.SetInsertPoint(elseBB);
-        GenerateBlock(Node->elseBlock, Builder, AllocaMap);
-        Builder.CreateBr(mergeBB);
+        PushScope(AllocaMap);
+        GenerateBlock(Node->elseBlock, Builder, AllocaMap, Methods);
+        PopScope(AllocaMap);
+        
+        if (!Builder.GetInsertBlock()->getTerminator()) {
+            Builder.CreateBr(mergeBB);
+            mergeNeeded = true;
+        }
+    } else {
+        mergeNeeded = true;
     }
 
-    Builder.SetInsertPoint(mergeBB);
+    if (mergeNeeded) {
+        mergeBB->insertInto(currentFunc);
+        Builder.SetInsertPoint(mergeBB);
+    } else {
+        mergeBB->deleteValue();
+    }
 
     return nullptr;
 }

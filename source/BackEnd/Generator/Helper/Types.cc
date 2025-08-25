@@ -17,7 +17,7 @@ llvm::Type* GetLLVMTypeFromString(const std::string& typeName, llvm::LLVMContext
         return llvm::Type::getVoidTy(context);
     }
     if (typeName == "string") {
-        return llvm::PointerType::getUnqual(llvm::Type::getInt8Ty(context));
+        return llvm::PointerType::get(context, 0);
     }
     return nullptr;
 }
@@ -37,6 +37,9 @@ std::string GetStringFromLLVMType(llvm::Type* type) {
     }
     if (type->isVoidTy()) {
         return "void";
+    }
+    if (type->isPointerTy()) {
+        return "string";
     }
 
     return "unknown";

@@ -21,3 +21,14 @@
 
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/MC/TargetRegistry.h"
+
+#include "llvm/Passes/PassBuilder.h"
+#include "llvm/Analysis/LoopAnalysisManager.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
+#include "llvm/IR/PassManager.h"
+#include "lld/Common/Driver.h"

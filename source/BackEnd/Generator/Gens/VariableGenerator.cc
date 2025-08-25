@@ -1,40 +1,57 @@
 #include "VariableGenerator.hh"
 #include "ExpressionGenerator.hh"
+#include <iostream>
+#include <cmath>
 
-void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap) {
+void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods) {
     std::string Name = Node->name;
     std::string Type = Node->varType.name;
 
-    llvm::Value* Value = GenerateExpression(Node->value, Builder, AllocaMap);
+    llvm::Value* Value = GenerateExpression(Node->value, Builder, AllocaMap, Methods);
 
     llvm::Type* IdentifiedType;
     if (Type == "auto") {
-        IdentifiedType = Value->getType();
+        if (Value->getType()->isPointerTy()) {
+            IdentifiedType = llvm::PointerType::get(Builder.getContext(), 0);
+        } else if (Value->getType()->isIntegerTy()) {
+            IdentifiedType = Builder.getInt32Ty();
+        } else if (Value->getType()->isFloatingPointTy()) {
+            if (llvm::ConstantFP* constFP = llvm::dyn_cast<llvm::ConstantFP>(Value)) {
+                double val = constFP->getValueAPF().convertToDouble();
+                if (val == floor(val)) {
+                    IdentifiedType = Builder.getInt32Ty();
+                } else {
+                    IdentifiedType = Builder.getDoubleTy();
+                }
+            } else {
+                IdentifiedType = Builder.getDoubleTy();
+            }
+        } else {
+            IdentifiedType = Value->getType();
+        }
     } else {
         IdentifiedType = GetLLVMTypeFromString(Type, Builder.getContext());
     }
 
-    if (GetStringFromLLVMType(IdentifiedType) == "int") {
-        if (Value->getType()->isFloatTy()) {
+    if (IdentifiedType && Value->getType() != IdentifiedType) {
+        if (IdentifiedType->isIntegerTy(32) && Value->getType()->isFloatingPointTy()) {
             Value = Builder.CreateFPToSI(Value, IdentifiedType);
-        } else if (Value->getType()->isDoubleTy()) {
-            Value = Builder.CreateFPToSI(Value, IdentifiedType);
-        }
-    } else if (GetStringFromLLVMType(IdentifiedType) == "float") {
-        if (Value->getType()->isIntegerTy()) {
-            Value = Builder.CreateSIToFP(Value, IdentifiedType);
-        } else if (Value->getType()->isDoubleTy()) {
-            Value = Builder.CreateFPTrunc(Value, IdentifiedType);
-        }
-    } else if (GetStringFromLLVMType(IdentifiedType) == "double") {
-        if (Value->getType()->isIntegerTy()) {
-            Value = Builder.CreateSIToFP(Value, IdentifiedType);
-        } else if (Value->getType()->isFloatTy()) {
-            Value = Builder.CreateFPExt(Value, IdentifiedType);
+        } else if (IdentifiedType->isFloatTy()) {
+            if (Value->getType()->isIntegerTy()) {
+                Value = Builder.CreateSIToFP(Value, IdentifiedType);
+            } else if (Value->getType()->isDoubleTy()) {
+                Value = Builder.CreateFPTrunc(Value, IdentifiedType);
+            }
+        } else if (IdentifiedType->isDoubleTy()) {
+            if (Value->getType()->isIntegerTy()) {
+                Value = Builder.CreateSIToFP(Value, IdentifiedType);
+            } else if (Value->getType()->isFloatTy()) {
+                Value = Builder.CreateFPExt(Value, IdentifiedType);
+            }
         }
     }
 
     llvm::AllocaInst* AllocaInst = Builder.CreateAlloca(IdentifiedType, nullptr, Name);
     Builder.CreateStore(Value, AllocaInst);
-    AllocaMap[Name] = AllocaInst;
+    AllocaMap.back()[Name] = AllocaInst;
 }

@@ -86,7 +86,9 @@ int main(int argc, char* argv[]) {
 
     Generator Gen(pkg);
     Gen.BuildLLVM();
+    Gen.OptimiseLLVM();
     Gen.PrintLLVM();
+    //Gen.Compile();
     //Gen.BuildExecutable();
 
     return 0;

@@ -341,7 +341,8 @@ struct FunctionNode : ASTNode {
     std::string returnType = "void";
     std::unique_ptr<BlockNode> body;
     bool isInlined = false;
-
+    bool alwaysInline = false;
+    
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         std::ostringstream oss;
         oss << branch(prefix, isLast) << "[Function]: " << name << " : " << returnType;

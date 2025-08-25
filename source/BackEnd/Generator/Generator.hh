@@ -11,16 +11,22 @@ struct GL_ASTPackage {
 
     bool Debug;
     bool Verbose;
+
+    std::string Target;
 };
 
 class Generator {
 private:
+    void CreateEntry();
+
     struct ASTPackage {
         fs::path InputFile;
         fs::path OutputFile;
 
         int Optimisation = 0;
         bool Debug, Verbose;
+
+        std::string Target;
     };
 
     struct CompilerInstance {
@@ -39,7 +45,7 @@ private:
     CompilerInstance CInstance;
     ASTPackage ASTPkg;
 public:
-    llvm::Module* Generator::GetModulePtr() {
+    llvm::Module* GetModulePtr() {
         return this->CInstance.IModule.get();
     }
 
@@ -67,4 +73,8 @@ public:
 
     void BuildLLVM();
     void PrintLLVM();
+    void OptimiseLLVM();
+    void Compile();
+    void Link(const std::string& ObjectFile);
+
 };

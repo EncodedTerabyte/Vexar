@@ -4,4 +4,4 @@
 #include "../Helper/Types.hh"
 #include "../LLVMHeader.hh"
 
-void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, AllocaSymbols& AllocaMap);
+void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods);

@@ -1,7 +1,9 @@
 #include "FunctionGenerator.hh"
 #include "BlockGenerator.hh"
+#include "../Helper/Types.hh"
+#include "../Helper/Mapping.hh"
 
-llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, AllocaSymbols& AllocaMap) {
+llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, AllocaSymbols& GlobalAllocas, FunctionSymbols& Methods) {
     llvm::LLVMContext& ctx = Module->getContext();
 
     std::string Name = Node->name;
@@ -26,32 +28,55 @@ llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, Alloc
     llvm::FunctionType* FuncType = llvm::FunctionType::get(ReturnType, ArgTypes, false);
     llvm::Function* Function = llvm::Function::Create(FuncType, llvm::Function::ExternalLinkage, Name, Module);
 
-    if (Node->isInlined) {
+    Methods[Name] = Function;
+
+    Function->removeFnAttr(llvm::Attribute::AlwaysInline);
+    Function->removeFnAttr(llvm::Attribute::InlineHint);
+    Function->removeFnAttr(llvm::Attribute::NoInline);
+
+    if (Node->alwaysInline) {
         Function->addFnAttr(llvm::Attribute::AlwaysInline);
+    } else if (Node->isInlined) {
+        Function->addFnAttr(llvm::Attribute::InlineHint);
     } else {
         Function->addFnAttr(llvm::Attribute::NoInline);
     }
 
-    auto ArgIter = Function->arg_begin();
-    for (const auto& Arg : Node->params) {
-        ArgIter->setName(Arg.first);
-        ++ArgIter;
-    }
+    ScopeStack LocalScopes;
+    PushScope(LocalScopes);
 
     llvm::BasicBlock* EntryBlock = llvm::BasicBlock::Create(ctx, "entry", Function);
     llvm::IRBuilder<> Builder(EntryBlock);
-    Builder.SetInsertPoint(EntryBlock);
-    
-    GenerateBlock(Node->body, Builder, AllocaMap);
-    /*std::string ActualRet = GetStringFromLLVMType(ReturnValue->getType());
-    std::cout << "returned a: " << ActualRet << std::endl;
-    */
-    
-    if (ReturnType->isVoidTy()) {
-        Builder.CreateRetVoid();
-    } else {
-        llvm::Value* ReturnValue = Builder.getInt32(0);
-        Builder.CreateRet(ReturnValue);
+
+    auto ArgIter = Function->arg_begin();
+    for (const auto& Arg : Node->params) {
+        ArgIter->setName(Arg.first);
+        
+        llvm::AllocaInst* Alloca = Builder.CreateAlloca(ArgIter->getType(), nullptr, Arg.first + ".addr");
+        Builder.CreateStore(ArgIter, Alloca);
+        
+        LocalScopes.back()[Arg.first] = Alloca;
+        ++ArgIter;
+    }
+
+    GenerateBlock(Node->body, Builder, LocalScopes, Methods);
+
+    if (!EntryBlock->getTerminator()) {
+        if (ReturnType->isVoidTy()) {
+            Builder.CreateRetVoid();
+        } else {
+            llvm::Value* DefaultValue;
+            if (ReturnType->isFloatingPointTy()) {
+                DefaultValue = llvm::ConstantFP::get(ReturnType, 0.0);
+            } else if (ReturnType->isIntegerTy()) {
+                DefaultValue = llvm::ConstantInt::get(ReturnType, 0);
+            } else if (ReturnType->isPointerTy()) {
+                DefaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
+            } else {
+                DefaultValue = llvm::UndefValue::get(ReturnType);
+            }
+            Builder.CreateRet(DefaultValue);
+        }
     }
 
     return Function;
