@@ -2,10 +2,30 @@
 #include "ExpressionGenerator.hh"
 
 llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+    if (!Expr) {
+        Write("Binary Expression", "Null ASTNode pointer", 2, true, true, "");
+        return nullptr;
+    }
+
+    std::string Location = " at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column);
+
     auto* BinOpNode = static_cast<BinaryOpNode*>(Expr.get());
+    if (!BinOpNode) {
+        Write("Binary Expression", "Failed to cast ASTNode to BinaryOpNode" + Location, 2, true, true, "");
+        return nullptr;
+    }
        
     llvm::Value* Left = GenerateExpression(BinOpNode->left, Builder, SymbolStack, Methods);
+    if (!Left) {
+        Write("Binary Expression", "Invalid left expression for operator " + BinOpNode->op + Location, 2, true, true, "");
+        return nullptr;
+    }
+
     llvm::Value* Right = GenerateExpression(BinOpNode->right, Builder, SymbolStack, Methods);
+    if (!Right) {
+        Write("Binary Expression", "Invalid right expression for operator " + BinOpNode->op + Location, 2, true, true, "");
+        return nullptr;
+    }
 
     if (BinOpNode->op == "+") {
         if (Left->getType()->isPointerTy() && Right->getType()->isPointerTy()) {
@@ -55,6 +75,10 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             llvm::Value* totalLenPlusOne = Builder.CreateAdd(totalLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 1));
 
             llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {totalLenPlusOne});
+            if (!resultPtr) {
+                Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
+                return nullptr;
+            }
             
             Builder.CreateCall(strcpyFunc, {resultPtr, Left});
             Builder.CreateCall(strcatFunc, {resultPtr, Right});
@@ -87,6 +111,10 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 }
 
                 rightStr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
+                if (!rightStr) {
+                    Write("Binary Expression", "Failed to allocate memory for integer to string conversion" + Location, 2, true, true, "");
+                    return nullptr;
+                }
                 llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
                 llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
                 Builder.CreateCall(sprintfFunc, {rightStr, formatPtr, Right});
@@ -113,6 +141,10 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 }
 
                 rightStr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
+                if (!rightStr) {
+                    Write("Binary Expression", "Failed to allocate memory for floating-point to string conversion" + Location, 2, true, true, "");
+                    return nullptr;
+                }
                 llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_to_str_fmt");
                 llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
                 
@@ -161,6 +193,10 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 llvm::Value* totalLenPlusOne = Builder.CreateAdd(totalLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 1));
 
                 llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {totalLenPlusOne});
+                if (!resultPtr) {
+                    Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
+                    return nullptr;
+                }
                 
                 Builder.CreateCall(strcpyFunc, {resultPtr, Left});
                 Builder.CreateCall(strcatFunc, {resultPtr, rightStr});
@@ -279,6 +315,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             return Builder.CreateICmpNE(Left, Right, "icmp_ne");
         }
     } else {
-        exit(1);
+        Write("Binary Expression", "Unsupported binary operator: " + BinOpNode->op + Location, 2, true, true, "");
+        return nullptr;
     }
 }

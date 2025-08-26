@@ -1,5 +1,4 @@
 #include "ExpressionGenerator.hh"
-
 #include "IdentifierGenerator.hh"
 #include "BinaryOpGenerator.hh"
 #include "CastGenerator.hh"
@@ -14,7 +13,10 @@ static void InitializeBuiltinSymbols() {
     if (!Builtins.empty()) return;
     
     Builtins["print"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-        if (args.empty()) exit(1);
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for print function", 2, true, true, "");
+            return nullptr;
+        }
         
         llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
         if (!printfFunc) {
@@ -28,6 +30,12 @@ static void InitializeBuiltinSymbols() {
         
         std::vector<llvm::Value*> printfArgs;
         llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for print" + Location, 2, true, true, "");
+            return nullptr;
+        }
         
         if (ArgValue->getType()->isIntegerTy(32)) {
             llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_fmt");
@@ -59,15 +67,19 @@ static void InitializeBuiltinSymbols() {
             printfArgs.push_back(formatPtr);
             printfArgs.push_back(boolAsInt);
         } else {
-            exit(1);
+            Write("Expression Generation", "Unsupported argument type for print" + Location, 2, true, true, "");
+            return nullptr;
         }
         
-        Builder.CreateCall(printfFunc, printfArgs);
+        llvm::Value* CallResult = Builder.CreateCall(printfFunc, printfArgs);
         return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
     };
     
     Builtins["println"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-        if (args.empty()) exit(1);
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for println function", 2, true, true, "");
+            return nullptr;
+        }
         
         llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
         if (!printfFunc) {
@@ -81,6 +93,12 @@ static void InitializeBuiltinSymbols() {
         
         std::vector<llvm::Value*> printfArgs;
         llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for println" + Location, 2, true, true, "");
+            return nullptr;
+        }
         
         if (ArgValue->getType()->isIntegerTy(32)) {
             llvm::Value* formatStr = Builder.CreateGlobalString("%d\n", "int_fmt");
@@ -112,10 +130,11 @@ static void InitializeBuiltinSymbols() {
             printfArgs.push_back(formatPtr);
             printfArgs.push_back(boolAsInt);
         } else {
-            exit(1);
+            Write("Expression Generation", "Unsupported argument type for println" + Location, 2, true, true, "");
+            return nullptr;
         }
         
-        Builder.CreateCall(printfFunc, printfArgs);
+        llvm::Value* CallResult = Builder.CreateCall(printfFunc, printfArgs);
         return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
     };
 
@@ -142,19 +161,32 @@ static void InitializeBuiltinSymbols() {
         
         llvm::Value* bufferSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 256);
         llvm::Value* bufferPtr = Builder.CreateCall(mallocFunc, {bufferSize}, "input_buffer");
+        if (!bufferPtr) {
+            Write("Expression Generation", "Failed to allocate buffer for input function", 2, true, true, "");
+            return nullptr;
+        }
         
         llvm::Value* formatStr = Builder.CreateGlobalString(" %255[^\n]", "input_fmt");
         llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
         
-        Builder.CreateCall(scanfFunc, {formatPtr, bufferPtr});
-        
+        llvm::Value* CallResult = Builder.CreateCall(scanfFunc, {formatPtr, bufferPtr});
         return bufferPtr;
     };
     
     Builtins["type"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-        if (args.empty()) exit(1);
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for type function", 2, true, true, "");
+            return nullptr;
+        }
         
         llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for type" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
         llvm::Type* ArgType = ArgValue->getType();
         
         std::string typeStr;
@@ -172,28 +204,40 @@ static void InitializeBuiltinSymbols() {
             typeStr = "string";
         } else {
             typeStr = "unknown";
+            Write("Expression Generation", "Unsupported argument type for type function" + Location, 1, true, true, "");
         }
         
-        return Builder.CreateGlobalString(typeStr, "type_result");
+        llvm::Value* Result = Builder.CreateGlobalString(typeStr, "type_result");
+        return Result;
     };
 
     Builtins["str"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-    if (args.empty()) exit(1);
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for str function", 2, true, true, "");
+            return nullptr;
+        }
     
-    llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
-    llvm::Type* ArgType = ArgValue->getType();
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for str" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ArgType = ArgValue->getType();
     
-    llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-    if (!mallocFunc) {
-        llvm::FunctionType* mallocType = llvm::FunctionType::get(
-            llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-            {llvm::Type::getInt64Ty(Builder.getContext())},
-            false
-        );
-        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-    }
+        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
+        if (!mallocFunc) {
+            llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
+                {llvm::Type::getInt64Ty(Builder.getContext())},
+                false
+            );
+            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
+        }
 
-    llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
+        llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
         if (!sprintfFunc) {
             llvm::FunctionType* sprintfType = llvm::FunctionType::get(
                 llvm::Type::getInt32Ty(Builder.getContext()),
@@ -205,6 +249,10 @@ static void InitializeBuiltinSymbols() {
         }
 
         llvm::Value* bufferPtr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
+        if (!bufferPtr) {
+            Write("Expression Generation", "Failed to allocate buffer for str function" + Location, 2, true, true, "");
+            return nullptr;
+        }
         
         if (ArgType->isIntegerTy(32)) {
             llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
@@ -232,7 +280,8 @@ static void InitializeBuiltinSymbols() {
         } else if (ArgType->isPointerTy()) {
             return ArgValue;
         } else {
-            exit(1);
+            Write("Expression Generation", "Unsupported argument type for str function" + Location, 2, true, true, "");
+            return nullptr;
         }
         
         return bufferPtr;
@@ -242,26 +291,78 @@ static void InitializeBuiltinSymbols() {
 llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
     InitializeBuiltinSymbols();
     
+    if (!Expr) {
+        Write("Expression Generation", "Null ASTNode pointer", 2, true, true, "");
+        return nullptr;
+    }
+
+    std::string Location = " at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column);
+    
     if (Expr->type == NodeType::Number) {
-        return GenerateNumber(Expr, Builder, SymbolStack, Methods);
+        llvm::Value* Result = GenerateNumber(Expr, Builder, SymbolStack, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid number expression" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::String) {
        auto* StrNode = static_cast<StringNode*>(Expr.get());
-       return Builder.CreateGlobalString(StrNode->value, "", 0, nullptr);
+       if (!StrNode) {
+           Write("Expression Generation", "Failed to cast to StringNode" + Location, 2, true, true, "");
+           return nullptr;
+       }
+       llvm::Value* Result = Builder.CreateGlobalString(StrNode->value, "", 0, nullptr);
+       return Result;
     } else if (Expr->type == NodeType::Character) {
        auto* CharNode = static_cast<CharacterNode*>(Expr.get());
-       return llvm::ConstantInt::get(llvm::Type::getInt8Ty(Builder.getContext()), CharNode->value);
+       if (!CharNode) {
+           Write("Expression Generation", "Failed to cast to CharacterNode" + Location, 2, true, true, "");
+           return nullptr;
+       }
+       llvm::Value* Result = llvm::ConstantInt::get(llvm::Type::getInt8Ty(Builder.getContext()), CharNode->value);
+       return Result;
     } else if (Expr->type == NodeType::Paren) {
         auto* ParenNodePtr = static_cast<ParenNode*>(Expr.get());
-        return GenerateExpression(ParenNodePtr->inner, Builder, SymbolStack, Methods);
+        if (!ParenNodePtr) {
+            Write("Expression Generation", "Failed to cast to ParenNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        llvm::Value* Result = GenerateExpression(ParenNodePtr->inner, Builder, SymbolStack, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid parenthesized expression" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::BinaryOp) {
-       return GenerateBinaryOp(Expr, Builder, SymbolStack, Methods);
+       llvm::Value* Result = GenerateBinaryOp(Expr, Builder, SymbolStack, Methods);
+       if (!Result) {
+           Write("Expression Generation", "Invalid binary operation" + Location, 2, true, true, "");
+           return nullptr;
+       }
+       return Result;
     } else if (Expr->type == NodeType::Identifier) {
-        return GenerateIdentifier(Expr, Builder, SymbolStack, Methods);
+        llvm::Value* Result = GenerateIdentifier(Expr, Builder, SymbolStack, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid identifier expression" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::FunctionCall) {
-        return GenerateCall(Expr, Builder, SymbolStack, Methods, Builtins);
+        llvm::Value* Result = GenerateCall(Expr, Builder, SymbolStack, Methods, Builtins);
+        if (!Result) {
+            Write("Expression Generation", "Invalid function call" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::Cast) {
-        return GenerateCast(Expr, Builder, SymbolStack, Methods);
+        llvm::Value* Result = GenerateCast(Expr, Builder, SymbolStack, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid cast expression" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     }
        
-    return llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), 0);
+    Write("Expression Generation", "Unsupported expression type: " + std::to_string(Expr->type) + Location, 2, true, true, "");
+    return nullptr;
 }

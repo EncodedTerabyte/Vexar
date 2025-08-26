@@ -1,40 +1,97 @@
 #include "ConditionGenerator.hh"
 #include "ExpressionGenerator.hh"
+#include "LoggerFile.hh"
 
 llvm::Value* ResolveIdentifier(const std::string& name, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack) {
     llvm::AllocaInst* AllocaInst = FindInScopes(SymbolStack, name);
     if (AllocaInst) {
-        return Builder.CreateLoad(AllocaInst->getAllocatedType(), AllocaInst, name.c_str());
+        llvm::Value* Result = Builder.CreateLoad(AllocaInst->getAllocatedType(), AllocaInst, name.c_str());
+        if (!Result) {
+            Write("Condition Generation", "Failed to load identifier: " + name, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     }
+    Write("Condition Generation", "Identifier not found: " + name, 2, true, true, "");
     return nullptr;
 }
 
 llvm::Value* GenerateCondition(ConditionNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
-    if (!Node->expression) return nullptr;
-    return GenerateConditionExpression(Node->expression, Builder, SymbolStack, Methods);
+    if (!Node) {
+        Write("Condition Generation", "Null ConditionNode pointer", 2, true, true, "");
+        return nullptr;
+    }
+
+    std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
+
+    if (!Node->expression) {
+        Write("Condition Generation", "Null expression in ConditionNode" + Location, 2, true, true, "");
+        return nullptr;
+    }
+
+    llvm::Value* Result = GenerateConditionExpression(Node->expression, Builder, SymbolStack, Methods);
+    if (!Result) {
+        Write("Condition Generation", "Failed to generate condition expression" + Location, 2, true, true, "");
+        return nullptr;
+    }
+
+    return Result;
 }
 
 llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
-    if (!expr) return nullptr;
-    
+    if (!expr) {
+        Write("Condition Expression", "Null ASTNode pointer", 2, true, true, "");
+        return nullptr;
+    }
+
+    std::string Location = " at line " + std::to_string(expr->token.line) + ", column " + std::to_string(expr->token.column);
+
     if (expr->type == NodeType::Boolean) {
         auto* boolNode = static_cast<BooleanNode*>(expr.get());
+        if (!boolNode) {
+            Write("Condition Expression", "Failed to cast to BooleanNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
         return llvm::ConstantInt::get(Builder.getInt1Ty(), boolNode->value ? 1 : 0);
     }
 
     if (expr->type == NodeType::Paren) {
         auto* parenNode = static_cast<ParenNode*>(expr.get());
+        if (!parenNode) {
+            Write("Condition Expression", "Failed to cast to ParenNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        if (!parenNode->inner) {
+            Write("Condition Expression", "Null inner expression in ParenNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
         return GenerateConditionExpression(parenNode->inner, Builder, SymbolStack, Methods);
     }
 
     if (expr->type == NodeType::BinaryOp) {
         auto* binOpNode = static_cast<BinaryOpNode*>(expr.get());
+        if (!binOpNode) {
+            Write("Condition Expression", "Failed to cast to BinaryOpNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
 
         if (binOpNode->op == "&&") {
+            if (!binOpNode->left) {
+                Write("Condition Expression", "Null left operand for &&" + Location, 2, true, true, "");
+                return nullptr;
+            }
             llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, SymbolStack, Methods);
-            if (!left) return nullptr;
+            if (!left) {
+                Write("Condition Expression", "Invalid left operand for &&" + Location, 2, true, true, "");
+                return nullptr;
+            }
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
+            if (!currentFunc) {
+                Write("Condition Expression", "Invalid current function for &&" + Location, 2, true, true, "");
+                return nullptr;
+            }
+
             llvm::BasicBlock* leftBB = Builder.GetInsertBlock();
             llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(Builder.getContext(), "land.rhs", currentFunc);
             llvm::BasicBlock* endBB = llvm::BasicBlock::Create(Builder.getContext(), "land.end", currentFunc);
@@ -42,8 +99,15 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             Builder.CreateCondBr(left, rhsBB, endBB);
             
             Builder.SetInsertPoint(rhsBB);
+            if (!binOpNode->right) {
+                Write("Condition Expression", "Null right operand for &&" + Location, 2, true, true, "");
+                return nullptr;
+            }
             llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, SymbolStack, Methods);
-            if (!right) return nullptr;
+            if (!right) {
+                Write("Condition Expression", "Invalid right operand for &&" + Location, 2, true, true, "");
+                return nullptr;
+            }
             Builder.CreateBr(endBB);
             rhsBB = Builder.GetInsertBlock();
             
@@ -56,10 +120,22 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
         }
         
         if (binOpNode->op == "||") {
+            if (!binOpNode->left) {
+                Write("Condition Expression", "Null left operand for ||" + Location, 2, true, true, "");
+                return nullptr;
+            }
             llvm::Value* left = GenerateConditionExpression(binOpNode->left, Builder, SymbolStack, Methods);
-            if (!left) return nullptr;
+            if (!left) {
+                Write("Condition Expression", "Invalid left operand for ||" + Location, 2, true, true, "");
+                return nullptr;
+            }
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
+            if (!currentFunc) {
+                Write("Condition Expression", "Invalid current function for ||" + Location, 2, true, true, "");
+                return nullptr;
+            }
+
             llvm::BasicBlock* leftBB = Builder.GetInsertBlock();
             llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(Builder.getContext(), "lor.rhs", currentFunc);
             llvm::BasicBlock* endBB = llvm::BasicBlock::Create(Builder.getContext(), "lor.end", currentFunc);
@@ -67,8 +143,15 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             Builder.CreateCondBr(left, endBB, rhsBB);
             
             Builder.SetInsertPoint(rhsBB);
+            if (!binOpNode->right) {
+                Write("Condition Expression", "Null right operand for ||" + Location, 2, true, true, "");
+                return nullptr;
+            }
             llvm::Value* right = GenerateConditionExpression(binOpNode->right, Builder, SymbolStack, Methods);
-            if (!right) return nullptr;
+            if (!right) {
+                Write("Condition Expression", "Invalid right operand for ||" + Location, 2, true, true, "");
+                return nullptr;
+            }
             Builder.CreateBr(endBB);
             rhsBB = Builder.GetInsertBlock();
             
@@ -80,10 +163,22 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             return phi;
         }
 
+        if (!binOpNode->left || !binOpNode->right) {
+            Write("Condition Expression", "Null operand for binary operator " + binOpNode->op + Location, 2, true, true, "");
+            return nullptr;
+        }
+
         llvm::Value* left = GenerateExpression(binOpNode->left, Builder, SymbolStack, Methods);
+        if (!left) {
+            Write("Condition Expression", "Invalid left expression for operator " + binOpNode->op + Location, 2, true, true, "");
+            return nullptr;
+        }
+
         llvm::Value* right = GenerateExpression(binOpNode->right, Builder, SymbolStack, Methods);
-        
-        if (!left || !right) return nullptr;
+        if (!right) {
+            Write("Condition Expression", "Invalid right expression for operator " + binOpNode->op + Location, 2, true, true, "");
+            return nullptr;
+        }
 
         llvm::Type* leftType = left->getType();
         llvm::Type* rightType = right->getType();
@@ -93,13 +188,17 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             if (!strcmpFunc) {
                 llvm::FunctionType* strcmpType = llvm::FunctionType::get(
                     llvm::Type::getInt32Ty(Builder.getContext()),
-                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
+                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
                     false
                 );
                 strcmpFunc = llvm::Function::Create(strcmpType, llvm::Function::ExternalLinkage, "strcmp", Builder.GetInsertBlock()->getParent()->getParent());
             }
 
             llvm::Value* cmpResult = Builder.CreateCall(strcmpFunc, {left, right});
+            if (!cmpResult) {
+                Write("Condition Expression", "Failed to compare strings for operator " + binOpNode->op + Location, 2, true, true, "");
+                return nullptr;
+            }
             llvm::Value* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), 0);
 
             if (binOpNode->op == "==") {
@@ -165,10 +264,14 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             } else if (exprValue->getType()->isIntegerTy()) {
                 llvm::Value* zero = llvm::ConstantInt::get(exprValue->getType(), 0);
                 return Builder.CreateICmpNE(exprValue, zero, "tobool");
+            } else {
+                Write("Condition Expression", "Unsupported type for boolean conversion" + Location, 2, true, true, "");
+                return nullptr;
             }
         }
         return exprValue;
     }
 
+    Write("Condition Expression", "Failed to generate expression" + Location, 2, true, true, "");
     return nullptr;
 }
