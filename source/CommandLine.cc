@@ -1,8 +1,33 @@
 #include "CommandLine.hh"
 
 std::vector<std::string> VexarAssociations = {"vx", "vxr", "vexa", "vexar", "vxx", "va"};
+std::unordered_map<std::string, std::string> target_map = {
+    {"asm", "asm"}, {"assembly", "asm"}, {"s", "asm"},
+    {"llvm", "llvm"}, {"ir", "llvm"},
+    {"bitcode", "bitcode"}, {"bc", "bitcode"},
+    {"obj", "obj"}, {"object", "obj"}, {"o", "obj"},
+
+    {"win", "x86_64-pc-windows-msvc"}, {"exe", "x86_64-pc-windows-msvc"}, {"windows", "x86_64-pc-windows-msvc"}, {"win64", "x86_64-pc-windows-msvc"}, {"win-msvc", "x86_64-pc-windows-msvc"},
+
+    {"win-gnu", "x86_64-pc-windows-gnu"}, {"mingw", "x86_64-pc-windows-gnu"},
+    
+    //{"linux", "x86_64-pc-linux-gnu"}, {"gnu", "x86_64-pc-linux-gnu"},
+
+    //{"mac", "x86_64-apple-darwin"}, {"macos", "x86_64-apple-darwin"}, {"darwin", "x86_64-apple-darwin"},
+    //{"mac-arm64", "arm64-apple-darwin"}, {"macos-arm64", "arm64-apple-darwin"},
+
+    //{"wasm", "wasm32-unknown-unknown"}, {"webassembly", "wasm32-unknown-unknown"}, {"web", "wasm32-unknown-unknown"},
+    //{"wasm-wasi", "wasm32-wasi"}, {"wasi", "wasm32-wasi"},
+};
 
 std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
+    auto split = [](const std::string& s, char delim) -> std::vector<std::string> {
+        std::vector<std::string> tokens;
+        std::istringstream ss(s);
+        for (std::string token; std::getline(ss, token, delim); tokens.push_back(token));
+        return tokens;
+    };
+
     auto In = std::make_unique<CLIObject>();
     fs::path cwd = fs::current_path();
 
@@ -30,6 +55,16 @@ std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
         else if (arg == "--run") { In->RunAfterCompile = true; recognized = true; }
         else if (arg == "--print_tokens") { In->PrintTokens = true; recognized = true; }
         else if (arg == "--print_ast") { In->PrintAST = true; recognized = true; }
+        else if (arg.find("--target=") != std::string::npos) {
+            recognized = true;
+            auto target = split(arg, '=').back();
+
+            if (target_map.find(target) != target_map.end()) {
+                In->CompilerTarget = target_map[target];
+            } else {
+                Write("CLI", "Unrecognized target '" + target + "'", 2, true);
+            }
+        } 
         else if (arg.rfind("-O", 0) == 0) {
             std::string level = arg.substr(2);
             In->OptimizationLevel = (!level.empty() && isdigit(level[0])) ? std::clamp(level[0] - '0', 0, 3) : 0;

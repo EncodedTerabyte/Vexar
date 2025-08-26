@@ -4,6 +4,8 @@
 #include "../../MiddleEnd/AST.hh"
 #include "Gens/FunctionGenerator.hh"
 
+#include "PlatformBinary.hh"
+
 Generator::Generator(GL_ASTPackage& pkg) {
     llvm::InitializeAllTargets();
     llvm::InitializeAllAsmPrinters();
@@ -106,7 +108,7 @@ void Generator::ValidateModule() {
             Function.getName() != "scanf" && Function.getName() != "malloc" && 
             Function.getName() != "sprintf" && Function.getName() != "strlen" &&
             Function.getName() != "strcpy" && Function.getName() != "strcat" &&
-            Function.getName() != "strtod") {
+            Function.getName() != "strtod" && Function.getName() != "strcmp") {
             
             auto userFuncIt = UserFunctions.find(Function.getName().str());
             if (userFuncIt == UserFunctions.end()) {
@@ -163,36 +165,62 @@ void Generator::ValidateModule() {
                 
                 if (auto* CallInst = llvm::dyn_cast<llvm::CallInst>(&Instruction)) {
                     llvm::Function* CalledFunc = CallInst->getCalledFunction();
-                    
-                    if (CalledFunc && CalledFunc->getName() != "printf" && CalledFunc->getName() != "scanf" && 
-                        CalledFunc->getName() != "malloc" && CalledFunc->getName() != "sprintf" && 
-                        CalledFunc->getName() != "strlen" && CalledFunc->getName() != "strcpy" && 
-                        CalledFunc->getName() != "strcat" && CalledFunc->getName() != "strtod") {
-                        
-                        auto userFuncIt = UserFunctions.find(CalledFunc->getName().str());
-                        if (userFuncIt == UserFunctions.end()) {
-                            Write("Validator", "Call to undefined function '" + CalledFunc->getName().str() + "'", 2, true, true, "");
-                        } else {
-                            llvm::Function* UserFunc = userFuncIt->second;
-                            if (CallInst->getNumOperands() != UserFunc->arg_size() + 1) {
-                                Write("Validator", "Function '" + CalledFunc->getName().str() + "' called with " + 
-                                     std::to_string(CallInst->getNumOperands() - 1) + " arguments, expected " + 
-                                     std::to_string(UserFunc->arg_size()), 2, true, true, "");
-                            }
-                            
-                            for (size_t i = 0; i < std::min((size_t)(CallInst->getNumOperands() - 1), (size_t)UserFunc->arg_size()); ++i) {
-                                llvm::Type* ArgType = CallInst->getOperand(i)->getType();
-                                llvm::Type* ParamType = UserFunc->getFunctionType()->getParamType(i);
-                                if (ArgType != ParamType && 
-                                    !((ArgType->isIntegerTy() && ParamType->isFloatingPointTy()) ||
-                                      (ArgType->isFloatingPointTy() && ParamType->isIntegerTy()))) {
-                                    Write("Validator", "Type mismatch in function call to '" + CalledFunc->getName().str() + 
-                                         "' at parameter " + std::to_string(i + 1), 2, true, true, "");
-                                }
-                            }
+
+                    if (CalledFunc && CalledFunc->getName() != "printf" &&
+                        CalledFunc->getName() != "scanf" &&
+                        CalledFunc->getName() != "malloc" &&
+                        CalledFunc->getName() != "sprintf" &&
+                        CalledFunc->getName() != "strlen" &&
+                        CalledFunc->getName() != "strcpy" &&
+                        CalledFunc->getName() != "strcat" &&
+                        CalledFunc->getName() != "strtod" &&
+                        CalledFunc->getName() != "strcmp") {
+
+                      auto userFuncIt =
+                          UserFunctions.find(CalledFunc->getName().str());
+                      if (userFuncIt == UserFunctions.end()) {
+                        Write("Validator",
+                              "Call to undefined function '" +
+                                  CalledFunc->getName().str() + "'",
+                              2, true, true, "");
+                      } else {
+                        llvm::Function *UserFunc = userFuncIt->second;
+                        if (CallInst->getNumOperands() !=
+                            UserFunc->arg_size() + 1) {
+                          Write("Validator",
+                                "Function '" + CalledFunc->getName().str() +
+                                    "' called with " +
+                                    std::to_string(CallInst->getNumOperands() -
+                                                   1) +
+                                    " arguments, expected " +
+                                    std::to_string(UserFunc->arg_size()),
+                                2, true, true, "");
                         }
+
+                        for (size_t i = 0;
+                             i <
+                             std::min((size_t)(CallInst->getNumOperands() - 1),
+                                      (size_t)UserFunc->arg_size());
+                             ++i) {
+                          llvm::Type *ArgType =
+                              CallInst->getOperand(i)->getType();
+                          llvm::Type *ParamType =
+                              UserFunc->getFunctionType()->getParamType(i);
+                          if (ArgType != ParamType &&
+                              !((ArgType->isIntegerTy() &&
+                                 ParamType->isFloatingPointTy()) ||
+                                (ArgType->isFloatingPointTy() &&
+                                 ParamType->isIntegerTy()))) {
+                            Write("Validator",
+                                  "Type mismatch in function call to '" +
+                                      CalledFunc->getName().str() +
+                                      "' at parameter " + std::to_string(i + 1),
+                                  2, true, true, "");
+                          }
+                        }
+                      }
                     }
-                    
+
                     if (CalledFunc && CalledFunc->getName() == "printf") {
                         if (CallInst->getNumOperands() < 2) {
                             Write("Validator", "print() or println() function call failed - invalid argument count in generated code", 2, true, true, "");
@@ -356,15 +384,19 @@ void Generator::ValidateModule() {
                 }
             }
         }
-        
-        if (!Function.getReturnType()->isVoidTy() && !hasReturn && 
-            Function.getName() != "printf" && Function.getName() != "scanf" && 
-            Function.getName() != "malloc" && Function.getName() != "sprintf" && 
-            Function.getName() != "strlen" && Function.getName() != "strcpy" && 
-            Function.getName() != "strcat" && Function.getName() != "strtod") {
-            Write("Validator", "Function '" + Function.getName().str() + "' may not return a value on all code paths", 2, true, true, "");
+
+        if (!Function.getReturnType()->isVoidTy() && !hasReturn &&
+            Function.getName() != "printf" && Function.getName() != "scanf" &&
+            Function.getName() != "malloc" && Function.getName() != "sprintf" &&
+            Function.getName() != "strlen" && Function.getName() != "strcpy" &&
+            Function.getName() != "strcat" && Function.getName() != "strtod" &&
+            Function.getName() != "strcmp") {
+          Write("Validator",
+                "Function '" + Function.getName().str() +
+                    "' may not return a value on all code paths",
+                2, true, true, "");
         }
-        
+
         for (const auto& var : localVars) {
             if (!localInitialized.count(var.first)) {
                 Write("Validator", "Variable '" + var.first + "' declared but never initialized in function '" + Function.getName().str() + "'", 1, true, true, "");
@@ -411,10 +443,16 @@ void Generator::OptimiseLLVM() {
    MPM.run(*Module, MAM);
 }
 
-void Generator::Compile() {
+void Generator::CompileTriple(std::string Triple) {
+    std::string Target;
 
+    if (Triple.empty()) {
+        Target = llvm::sys::getDefaultTargetTriple();
+    } else {
+        Target = Triple;
+    }
+
+    CreatePlatformBinary(this->TakeModule(), Target, this->ASTPkg.OutputFile);
 }
 
-void Generator::Link(const std::string& ObjectFile) {
-
-}
+void Generator::Link(fs::path ObjectFile) {}

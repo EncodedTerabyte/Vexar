@@ -35,6 +35,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             if (!left) return nullptr;
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
+            llvm::BasicBlock* leftBB = Builder.GetInsertBlock();
             llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(Builder.getContext(), "land.rhs", currentFunc);
             llvm::BasicBlock* endBB = llvm::BasicBlock::Create(Builder.getContext(), "land.end", currentFunc);
             
@@ -48,7 +49,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             
             Builder.SetInsertPoint(endBB);
             llvm::PHINode* phi = Builder.CreatePHI(Builder.getInt1Ty(), 2, "land");
-            phi->addIncoming(llvm::ConstantInt::getFalse(Builder.getContext()), Builder.GetInsertBlock()->getSinglePredecessor());
+            phi->addIncoming(llvm::ConstantInt::getFalse(Builder.getContext()), leftBB);
             phi->addIncoming(right, rhsBB);
             
             return phi;
@@ -59,6 +60,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             if (!left) return nullptr;
 
             llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
+            llvm::BasicBlock* leftBB = Builder.GetInsertBlock();
             llvm::BasicBlock* rhsBB = llvm::BasicBlock::Create(Builder.getContext(), "lor.rhs", currentFunc);
             llvm::BasicBlock* endBB = llvm::BasicBlock::Create(Builder.getContext(), "lor.end", currentFunc);
             
@@ -72,7 +74,7 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
             
             Builder.SetInsertPoint(endBB);
             llvm::PHINode* phi = Builder.CreatePHI(Builder.getInt1Ty(), 2, "lor");
-            phi->addIncoming(llvm::ConstantInt::getTrue(Builder.getContext()), Builder.GetInsertBlock()->getSinglePredecessor());
+            phi->addIncoming(llvm::ConstantInt::getTrue(Builder.getContext()), leftBB);
             phi->addIncoming(right, rhsBB);
             
             return phi;

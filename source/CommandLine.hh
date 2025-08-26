@@ -10,6 +10,7 @@
 #include <map>
 #include <memory>
 #include <filesystem>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -33,6 +34,8 @@ public:
     bool UsingMenu = false;
     bool HelpMenu = false;
     bool VersionMenu = false;
+    
+    std::string CompilerTarget = "";
 };
 
 std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]);

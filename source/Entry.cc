@@ -91,8 +91,8 @@ int main(int argc, char* argv[]) {
     Gen.BuildLLVM();
     Gen.ValidateModule();
     Gen.OptimiseLLVM();
-    Gen.PrintLLVM();
-    //Gen.Compile();
+    //Gen.PrintLLVM();
+    Gen.CompileTriple(Instructions->CompilerTarget);
     //Gen.BuildExecutable();
 
     return 0;

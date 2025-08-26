@@ -14,23 +14,30 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
 #include "llvm/IR/Value.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/IR/LegacyPassManager.h"
 
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/FileSystem.h"
 
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/raw_ostream.h"
-#include "llvm/IR/LegacyPassManager.h"
+
+#include "llvm/TargetParser/Host.h"
 #include "llvm/MC/TargetRegistry.h"
 
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
-#include "llvm/IR/PassManager.h"
+
+#include "llvm/Bitcode/BitcodeWriter.h"
+
 #include "lld/Common/Driver.h"
 
-#include "llvm/IR/Verifier.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
+
+#include "llvm/TargetParser/Triple.h"

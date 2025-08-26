@@ -2,6 +2,7 @@
 
 #include "LLVMHeader.hh"
 #include "Helper/Mapping.hh"
+
 struct GL_ASTPackage {
     fs::path InputFile;
     fs::path OutputFile;
@@ -75,7 +76,7 @@ public:
     void PrintLLVM();
     void ValidateModule();
     void OptimiseLLVM();
-    void Compile();
-    void Link(const std::string& ObjectFile);
+    void CompileTriple(std::string Triple);
+    void Link(fs::path ObjectFile);
 
 };
