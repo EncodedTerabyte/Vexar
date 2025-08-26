@@ -57,29 +57,75 @@ namespace IdentifierExpression {
         }
 
         if (nextTok.value == "[") {
-            parser.advance();
-            auto accessNode = std::make_unique<ArrayAccessNode>();
-            accessNode->type = NodeType::ArrayAccess;
-            accessNode->identifier = node->name;
-            accessNode->expr = Main::ParseExpression(parser, 0, {"]"});
-
-            if (!accessNode->expr) {
-                Write("Parser", "Invalid array index expression for '" + node->name +
-                      "' at line " + std::to_string(nextTok.line) + ", column " +
-                      std::to_string(nextTok.column), 2, true, true, "");
-                return nullptr;
-            }
-
-            if (parser.peek().value == "]") {
+            std::vector<std::unique_ptr<ASTNode>> indices;
+            
+            while (parser.peek().value == "[") {
                 parser.advance();
-            } else {
-                Write("Parser", "Unclosed array access for '" + node->name +
-                      "' starting at line " + std::to_string(nextTok.line) +
-                      ", column " + std::to_string(nextTok.column), 2, true, true, "");
-                return nullptr;
+                auto indexExpr = Main::ParseExpression(parser, 0, {"]"});
+
+                if (!indexExpr) {
+                    Write("Parser", "Invalid array index expression for '" + node->name +
+                          "' at line " + std::to_string(parser.peek().line) + ", column " +
+                          std::to_string(parser.peek().column), 2, true, true, "");
+                    return nullptr;
+                }
+
+                if (parser.peek().value != "]") {
+                    Write("Parser", "Unclosed array access for '" + node->name +
+                          "' starting at line " + std::to_string(parser.peek().line) +
+                          ", column " + std::to_string(parser.peek().column), 2, true, true, "");
+                    return nullptr;
+                }
+                parser.advance();
+                
+                indices.push_back(std::move(indexExpr));
             }
 
-            return accessNode;
+            if (parser.peek().value == "=") {
+                parser.advance();
+                auto value = Main::ParseExpression(parser, 0, {";", "\n"});
+                if (!value) {
+                    Write("Parser", "Invalid array assignment value for '" + node->name +
+                          "' at line " + std::to_string(parser.peek().line) +
+                          ", column " + std::to_string(parser.peek().column), 2, true, true, "");
+                    return nullptr;
+                }
+
+                auto arrayAssignNode = std::make_unique<ArrayAssignmentNode>();
+                arrayAssignNode->identifier = node->name;
+                arrayAssignNode->type = NodeType::ArrayAssignment;
+                
+                if (indices.size() == 1) {
+                    arrayAssignNode->indexExpr = std::move(indices[0]);
+                } else {
+                    auto arrayNode = std::make_unique<ArrayNode>();
+                    arrayNode->type = NodeType::Array;
+                    for (auto& idx : indices) {
+                        arrayNode->elements.push_back(std::move(idx));
+                    }
+                    arrayAssignNode->indexExpr = std::move(arrayNode);
+                }
+                
+                arrayAssignNode->value = std::move(value);
+                return arrayAssignNode;
+            } else {
+                auto accessNode = std::make_unique<ArrayAccessNode>();
+                accessNode->type = NodeType::ArrayAccess;
+                accessNode->identifier = node->name;
+                
+                if (indices.size() == 1) {
+                    accessNode->expr = std::move(indices[0]);
+                } else {
+                    auto arrayNode = std::make_unique<ArrayNode>();
+                    arrayNode->type = NodeType::Array;
+                    for (auto& idx : indices) {
+                        arrayNode->elements.push_back(std::move(idx));
+                    }
+                    accessNode->expr = std::move(arrayNode);
+                }
+                
+                return accessNode;
+            }
         }
 
         if (nextTok.type == TokenType::Operator) {

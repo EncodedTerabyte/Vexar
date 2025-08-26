@@ -46,6 +46,367 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
             GenerateVariable(Var, Builder, SymbolStack, Methods);
+        } else if (Statement->type == NodeType::ArrayAssignment) {
+            auto* ArrayAssign = static_cast<ArrayAssignmentNode*>(Statement.get());
+            if (!ArrayAssign) {
+                Write("Block Generator", "Failed to cast to ArrayAssignmentNode" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            llvm::Value* rvalue = GenerateExpression(ArrayAssign->value, Builder, SymbolStack, Methods);
+            if (!rvalue) {
+                Write("Block Generator", "Invalid assignment value expression for array assignment" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            llvm::Value* arrayPtr = nullptr;
+            for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+                auto found = it->find(ArrayAssign->identifier);
+                if (found != it->end()) {
+                    arrayPtr = found->second;
+                    break;
+                }
+            }
+            
+            if (!arrayPtr) {
+                Write("Block Generator", "Undefined array identifier: " + ArrayAssign->identifier + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(arrayPtr);
+            if (!allocaInst) {
+                Write("Block Generator", "Array identifier is not an allocated variable: " + ArrayAssign->identifier + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            llvm::Type* allocatedType = allocaInst->getAllocatedType();
+            
+            if (ArrayAssign->indexExpr->type == NodeType::Array) {
+                // Multi-dimensional array assignment
+                auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
+                std::vector<llvm::Value*> indices;
+                indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+                
+                llvm::Type* currentType = allocatedType;
+                for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
+                    llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+                    if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                        Write("Block Generator", "Invalid array index in array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    if (!currentType->isArrayTy()) {
+                        Write("Block Generator", "Too many dimensions in array assignment: " + ArrayAssign->identifier + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(currentType);
+                    if (!arrayType) {
+                        Write("Block Generator", "Expected array type in array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    uint64_t arraySize = arrayType->getNumElements();
+                    if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                        uint64_t index = constIndex->getZExtValue();
+                        if (index >= arraySize) {
+                            Write("Block Generator", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + " in array assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                    }
+                    
+                    indices.push_back(indexValue);
+                    currentType = arrayType->getElementType();
+                }
+                
+                if (rvalue->getType() != currentType) {
+                    if (currentType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                        rvalue = Builder.CreateFPToSI(rvalue, currentType);
+                    } else if (currentType->isFloatTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                        } else if (rvalue->getType()->isDoubleTy()) {
+                            rvalue = Builder.CreateFPTrunc(rvalue, currentType);
+                        }
+                    } else if (currentType->isDoubleTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                        } else if (rvalue->getType()->isFloatTy()) {
+                            rvalue = Builder.CreateFPExt(rvalue, currentType);
+                        }
+                    } else {
+                        Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                }
+                
+                llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                Builder.CreateStore(rvalue, elementPtr);
+                
+            } else {
+                // Single-dimensional array assignment
+                llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, Builder, SymbolStack, Methods);
+                if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                    Write("Block Generator", "Invalid array index in array assignment" + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                if (!allocatedType->isArrayTy()) {
+                    Write("Block Generator", "Variable is not an array in array assignment: " + ArrayAssign->identifier + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+                if (!arrayType) {
+                    Write("Block Generator", "Expected array type in array assignment" + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                uint64_t arraySize = arrayType->getNumElements();
+                if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                    uint64_t index = constIndex->getZExtValue();
+                    if (index >= arraySize) {
+                        Write("Block Generator", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + " in array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                }
+                
+                llvm::Type* elementType = arrayType->getElementType();
+                if (rvalue->getType() != elementType) {
+                    if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                        rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                    } else if (elementType->isFloatTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        } else if (rvalue->getType()->isDoubleTy()) {
+                            rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                        }
+                    } else if (elementType->isDoubleTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        } else if (rvalue->getType()->isFloatTy()) {
+                            rvalue = Builder.CreateFPExt(rvalue, elementType);
+                        }
+                    } else {
+                        Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                }
+                
+                std::vector<llvm::Value*> indices = {
+                    llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
+                    indexValue
+                };
+                
+                llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                Builder.CreateStore(rvalue, elementPtr);
+            }
+        } else if (Statement->type == NodeType::Assignment) {
+            auto* Assign = static_cast<AssignmentOpNode*>(Statement.get());
+            if (!Assign) {
+                Write("Block Generator", "Failed to cast to AssignmentOpNode" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            llvm::Value* rvalue = GenerateExpression(Assign->right, Builder, SymbolStack, Methods);
+            if (!rvalue) {
+                Write("Block Generator", "Invalid assignment value expression" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            
+            if (Assign->left->type == NodeType::ArrayAccess) {
+                auto* ArrayAccess = static_cast<ArrayAccessNode*>(Assign->left.get());
+                
+                llvm::Value* arrayPtr = nullptr;
+                for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+                    auto found = it->find(ArrayAccess->identifier);
+                    if (found != it->end()) {
+                        arrayPtr = found->second;
+                        break;
+                    }
+                }
+                
+                if (!arrayPtr) {
+                    Write("Block Generator", "Undefined array identifier: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(arrayPtr);
+                if (!allocaInst) {
+                    Write("Block Generator", "Array identifier is not an allocated variable: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::Type* allocatedType = allocaInst->getAllocatedType();
+                
+                if (ArrayAccess->expr->type == NodeType::Array) {
+                    auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAccess->expr.get());
+                    std::vector<llvm::Value*> indices;
+                    indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+                    
+                    llvm::Type* currentType = allocatedType;
+                    for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
+                        llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+                        if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                            Write("Block Generator", "Invalid array index in assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                        
+                        if (!currentType->isArrayTy()) {
+                            Write("Block Generator", "Too many dimensions in array assignment: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                        
+                        llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(currentType);
+                        if (!arrayType) {
+                            Write("Block Generator", "Expected array type in assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                        
+                        uint64_t arraySize = arrayType->getNumElements();
+                        if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                            uint64_t index = constIndex->getZExtValue();
+                            if (index >= arraySize) {
+                                Write("Block Generator", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + " in assignment" + StmtLocation, 2, true, true, "");
+                                continue;
+                            }
+                        }
+                        
+                        indices.push_back(indexValue);
+                        currentType = arrayType->getElementType();
+                    }
+                    
+                    if (rvalue->getType() != currentType) {
+                        if (currentType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                            rvalue = Builder.CreateFPToSI(rvalue, currentType);
+                        } else if (currentType->isFloatTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                            } else if (rvalue->getType()->isDoubleTy()) {
+                                rvalue = Builder.CreateFPTrunc(rvalue, currentType);
+                            }
+                        } else if (currentType->isDoubleTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                            } else if (rvalue->getType()->isFloatTy()) {
+                                rvalue = Builder.CreateFPExt(rvalue, currentType);
+                            }
+                        } else {
+                            Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                    }
+                    
+                    llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                    Builder.CreateStore(rvalue, elementPtr);
+                    
+                } else {
+                    llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+                    if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                        Write("Block Generator", "Invalid array index in assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    if (!allocatedType->isArrayTy()) {
+                        Write("Block Generator", "Variable is not an array in assignment: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+                    if (!arrayType) {
+                        Write("Block Generator", "Expected array type in assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    uint64_t arraySize = arrayType->getNumElements();
+                    if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                        uint64_t index = constIndex->getZExtValue();
+                        if (index >= arraySize) {
+                            Write("Block Generator", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + " in assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                    }
+                    
+                    llvm::Type* elementType = arrayType->getElementType();
+                    if (rvalue->getType() != elementType) {
+                        if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                            rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                        } else if (elementType->isFloatTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                            } else if (rvalue->getType()->isDoubleTy()) {
+                                rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                            }
+                        } else if (elementType->isDoubleTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                            } else if (rvalue->getType()->isFloatTy()) {
+                                rvalue = Builder.CreateFPExt(rvalue, elementType);
+                            }
+                        } else {
+                            Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                    }
+                    
+                    std::vector<llvm::Value*> indices = {
+                        llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
+                        indexValue
+                    };
+                    
+                    llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                    Builder.CreateStore(rvalue, elementPtr);
+                }
+            } else if (Assign->left->type == NodeType::Identifier) {
+                auto* Ident = static_cast<IdentifierNode*>(Assign->left.get());
+                
+                llvm::Value* varPtr = nullptr;
+                for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+                    auto found = it->find(Ident->name);
+                    if (found != it->end()) {
+                        varPtr = found->second;
+                        break;
+                    }
+                }
+                
+                if (!varPtr) {
+                    Write("Block Generator", "Undefined variable: " + Ident->name + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(varPtr);
+                if (!allocaInst) {
+                    Write("Block Generator", "Variable is not modifiable: " + Ident->name + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::Type* varType = allocaInst->getAllocatedType();
+                if (rvalue->getType() != varType) {
+                    if (varType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                        rvalue = Builder.CreateFPToSI(rvalue, varType);
+                    } else if (varType->isFloatTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, varType);
+                        } else if (rvalue->getType()->isDoubleTy()) {
+                            rvalue = Builder.CreateFPTrunc(rvalue, varType);
+                        }
+                    } else if (varType->isDoubleTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, varType);
+                        } else if (rvalue->getType()->isFloatTy()) {
+                            rvalue = Builder.CreateFPExt(rvalue, varType);
+                        }
+                    } else {
+                        Write("Block Generator", "Type mismatch in variable assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                }
+                
+                Builder.CreateStore(rvalue, allocaInst);
+            } else {
+                Write("Block Generator", "Invalid assignment target" + StmtLocation, 2, true, true, "");
+                continue;
+            }
         } else if (Statement->type == NodeType::Return) {
             auto* Ret = static_cast<ReturnNode*>(Statement.get());
             if (!Ret) {

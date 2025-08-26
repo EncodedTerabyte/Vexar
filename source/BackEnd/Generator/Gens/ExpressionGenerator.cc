@@ -361,6 +361,209 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
             return nullptr;
         }
         return Result;
+    } else if (Expr->type == NodeType::Array) {
+        auto* ArrayNodePtr = static_cast<ArrayNode*>(Expr.get());
+        if (!ArrayNodePtr) {
+            Write("Expression Generation", "Failed to cast to ArrayNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        if (ArrayNodePtr->elements.empty()) {
+            Write("Expression Generation", "Empty array literal" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ElementType = nullptr;
+        if (!ArrayNodePtr->expectedType.empty() && ArrayNodePtr->expectedType != "auto") {
+            ElementType = GetLLVMTypeFromString(ArrayNodePtr->expectedType, Builder.getContext());
+            if (!ElementType) {
+                Write("Expression Generation", "Invalid expected type: " + ArrayNodePtr->expectedType + Location, 2, true, true, "");
+                return nullptr;
+            }
+        } else {
+            llvm::Value* firstValue = GenerateExpression(ArrayNodePtr->elements[0], Builder, SymbolStack, Methods);
+            if (!firstValue) {
+                Write("Expression Generation", "Cannot deduce array element type" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            ElementType = firstValue->getType();
+            
+            if (ElementType->isFloatingPointTy()) {
+                if (llvm::ConstantFP* constFP = llvm::dyn_cast<llvm::ConstantFP>(firstValue)) {
+                    double val = constFP->getValueAPF().convertToDouble();
+                    if (val == floor(val)) {
+                        ElementType = Builder.getInt32Ty();
+                    } else {
+                        ElementType = Builder.getDoubleTy();
+                    }
+                } else {
+                    ElementType = Builder.getDoubleTy();
+                }
+            } else if (ElementType->isIntegerTy()) {
+                ElementType = Builder.getInt32Ty();
+            } else if (ElementType->isPointerTy()) {
+                ElementType = llvm::PointerType::get(Builder.getInt8Ty(), 0);
+            }
+        }
+        
+        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
+        if (!mallocFunc) {
+            llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
+                {llvm::Type::getInt64Ty(Builder.getContext())},
+                false
+            );
+            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
+        }
+        
+        uint64_t arraySize = ArrayNodePtr->elements.size();
+        uint64_t elementSize = Builder.GetInsertBlock()->getParent()->getParent()->getDataLayout().getTypeAllocSize(ElementType);
+        llvm::Value* totalSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), arraySize * elementSize);
+        
+        llvm::Value* arrayPtr = Builder.CreateCall(mallocFunc, {totalSize});
+        if (!arrayPtr) {
+            Write("Expression Generation", "Failed to allocate memory for array" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* typedPtrType = llvm::PointerType::get(ElementType, 0);
+        llvm::Value* typedArrayPtr = Builder.CreatePointerCast(arrayPtr, typedPtrType);
+        
+        for (size_t i = 0; i < ArrayNodePtr->elements.size(); ++i) {
+            llvm::Value* elementValue = GenerateExpression(ArrayNodePtr->elements[i], Builder, SymbolStack, Methods);
+            if (!elementValue) {
+                Write("Expression Generation", "Failed to generate array element at index " + std::to_string(i) + Location, 2, true, true, "");
+                continue;
+            }
+            
+            if (elementValue->getType() != ElementType) {
+                if (ElementType->isIntegerTy(32) && elementValue->getType()->isFloatingPointTy()) {
+                    elementValue = Builder.CreateFPToSI(elementValue, ElementType);
+                } else if (ElementType->isFloatTy()) {
+                    if (elementValue->getType()->isIntegerTy()) {
+                        elementValue = Builder.CreateSIToFP(elementValue, ElementType);
+                    } else if (elementValue->getType()->isDoubleTy()) {
+                        elementValue = Builder.CreateFPTrunc(elementValue, ElementType);
+                    }
+                } else if (ElementType->isDoubleTy()) {
+                    if (elementValue->getType()->isIntegerTy()) {
+                        elementValue = Builder.CreateSIToFP(elementValue, ElementType);
+                    } else if (elementValue->getType()->isFloatTy()) {
+                        elementValue = Builder.CreateFPExt(elementValue, ElementType);
+                    }
+                }
+            }
+            
+            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(ElementType, typedArrayPtr, 
+                llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), i));
+            Builder.CreateStore(elementValue, elementPtr);
+        }
+        
+        return typedArrayPtr;
+    } else if (Expr->type == NodeType::ArrayAccess) {
+        auto* AccessNodePtr = static_cast<ArrayAccessNode*>(Expr.get());
+        if (!AccessNodePtr) {
+            Write("Expression Generation", "Failed to cast to ArrayAccessNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* arrayPtr = nullptr;
+        for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+            auto found = it->find(AccessNodePtr->identifier);
+            if (found != it->end()) {
+                arrayPtr = found->second;
+                break;
+            }
+        }
+        
+        if (!arrayPtr) {
+            Write("Expression Generation", "Undefined array identifier: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(arrayPtr);
+        if (!allocaInst) {
+            Write("Expression Generation", "Array identifier is not an allocated variable: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* allocatedType = allocaInst->getAllocatedType();
+        
+        if (AccessNodePtr->expr->type == NodeType::Array) {
+            auto* IndexArrayPtr = static_cast<ArrayNode*>(AccessNodePtr->expr.get());
+            std::vector<llvm::Value*> indices;
+            indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+            
+            llvm::Type* currentType = allocatedType;
+            for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
+                llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+                if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                    Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                if (!currentType->isArrayTy()) {
+                    Write("Expression Generation", "Too many dimensions in array access: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(currentType);
+                if (!arrayType) {
+                    Write("Expression Generation", "Expected array type" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                uint64_t arraySize = arrayType->getNumElements();
+                if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                    uint64_t index = constIndex->getZExtValue();
+                    if (index >= arraySize) {
+                        Write("Expression Generation", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                }
+                
+                indices.push_back(indexValue);
+                currentType = arrayType->getElementType();
+            }
+            
+            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+            return Builder.CreateLoad(currentType, elementPtr);
+            
+        } else {
+            llvm::Value* indexValue = GenerateExpression(AccessNodePtr->expr, Builder, SymbolStack, Methods);
+            if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            if (!allocatedType->isArrayTy()) {
+                Write("Expression Generation", "Variable is not an array: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+            if (!arrayType) {
+                Write("Expression Generation", "Expected array type" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            uint64_t arraySize = arrayType->getNumElements();
+            if (llvm::ConstantInt* constIndex = llvm::dyn_cast<llvm::ConstantInt>(indexValue)) {
+                uint64_t index = constIndex->getZExtValue();
+                if (index >= arraySize) {
+                    Write("Expression Generation", "Array index " + std::to_string(index) + " out of bounds for array of size " + std::to_string(arraySize) + Location, 2, true, true, "");
+                    return nullptr;
+                }
+            }
+            
+            std::vector<llvm::Value*> indices = {
+                llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
+                indexValue
+            };
+            
+            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+            return Builder.CreateLoad(arrayType->getElementType(), elementPtr);
+        }
     }
        
     Write("Expression Generation", "Unsupported expression type: " + std::to_string(Expr->type) + Location, 2, true, true, "");

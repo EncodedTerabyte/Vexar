@@ -4,5 +4,5 @@
 #include <memory>
 
 namespace ArrayExpression {
-    std::unique_ptr<ASTNode> Parse(Parser& parser);
+    std::unique_ptr<ASTNode> Parse(Parser& parser, const std::string& expectedType);
 }

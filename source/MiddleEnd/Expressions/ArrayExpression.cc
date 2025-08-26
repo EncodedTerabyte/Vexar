@@ -3,7 +3,7 @@
 #include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 namespace ArrayExpression {
-    std::unique_ptr<ASTNode> Parse(Parser& parser) {
+    std::unique_ptr<ASTNode> Parse(Parser& parser, const std::string& expectedType) {
         const Token& tok = parser.peek();
         if (tok.type != TokenType::Delimiter || tok.value != "{") {
             Write("Parser", "Expected '{' at line " + std::to_string(tok.line) +
@@ -15,6 +15,7 @@ namespace ArrayExpression {
         auto arrayNode = std::make_unique<ArrayNode>();
         arrayNode->type = NodeType::Array;
         arrayNode->token = tok;
+        arrayNode->expectedType = expectedType;
 
         while (true) {
             if (parser.peek().type == TokenType::Delimiter && parser.peek().value == "}") {
@@ -22,7 +23,14 @@ namespace ArrayExpression {
                 break;
             }
 
-            auto element = Main::ParseExpression(parser, 0, {",", "}"});
+            std::unique_ptr<ASTNode> element;
+            
+            if (parser.peek().type == TokenType::Delimiter && parser.peek().value == "{") {
+                element = Parse(parser, expectedType);
+            } else {
+                element = Main::ParseExpression(parser, 0, {",", "}"});
+            }
+            
             if (!element) {
                 Write("Parser", "Invalid array element at line " +
                       std::to_string(parser.peek().line) + ", column " +

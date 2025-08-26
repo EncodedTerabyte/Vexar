@@ -29,7 +29,8 @@ struct NodeType {
     static constexpr int Cast = 20;
     static constexpr int Array = 21;
     static constexpr int ArrayAccess = 22;
-    static constexpr int InlinePreProc = 23;
+    static constexpr int ArrayAssignment = 23;
+    static constexpr int InlinePreProc = 24;
 };
 
 struct ASTNode {
@@ -426,12 +427,14 @@ struct CastNode : ASTNode {
 
 struct ArrayNode : ASTNode {
     std::vector<std::unique_ptr<ASTNode>> elements;
+    std::string expectedType;
 
-    ArrayNode() { type = -1; }
+    ArrayNode() { type = NodeType::Array; }
 
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         std::ostringstream oss;
         oss << branch(prefix, isLast) << "[Array]";
+        if (!expectedType.empty()) oss << " (" << expectedType << ")";
         std::string childPrefix = nextPrefix(prefix, isLast);
         for (size_t i = 0; i < elements.size(); ++i) {
             bool last = (i == elements.size() - 1);
@@ -451,6 +454,23 @@ struct ArrayAccessNode : ASTNode {
         if (expr) {
             oss << "\n" << expr->get(nextPrefix(prefix, isLast), true);
         }
+        return oss.str();
+    }
+};
+
+struct ArrayAssignmentNode : public ASTNode {
+    std::string identifier;
+    std::unique_ptr<ASTNode> indexExpr;
+    std::unique_ptr<ASTNode> value;
+
+    ArrayAssignmentNode() { type = NodeType::ArrayAssignment; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Array Assignment]: " << identifier;
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        if (indexExpr) oss << "\n" << indexExpr->get(childPrefix, !value);
+        if (value) oss << "\n" << value->get(childPrefix, true);
         return oss.str();
     }
 };

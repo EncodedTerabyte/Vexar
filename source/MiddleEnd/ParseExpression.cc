@@ -38,7 +38,7 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
     }
     if (tok.type == TokenType::Delimiter && tok.value == "{") {
         if (parser.peek(-1).value == "=") {
-            return ArrayExpression::Parse(parser);
+            return ArrayExpression::Parse(parser, "");
         } else {
             return BlockNodeContainer::ParseBlock(parser);
         }

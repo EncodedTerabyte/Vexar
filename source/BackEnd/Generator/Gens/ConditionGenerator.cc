@@ -1,6 +1,5 @@
 #include "ConditionGenerator.hh"
 #include "ExpressionGenerator.hh"
-#include "LoggerFile.hh"
 
 llvm::Value* ResolveIdentifier(const std::string& name, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack) {
     llvm::AllocaInst* AllocaInst = FindInScopes(SymbolStack, name);
