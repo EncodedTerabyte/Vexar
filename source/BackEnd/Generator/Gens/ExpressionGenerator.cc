@@ -9,6 +9,8 @@
 #include <functional>
 #include <unordered_map>
 
+const uint64_t HEAP_ARRAY_THRESHOLD = 1024;
+
 static void InitializeBuiltinSymbols() {
     if (!Builtins.empty()) return;
     
@@ -288,6 +290,19 @@ static void InitializeBuiltinSymbols() {
     };
 }
 
+llvm::Function* GetOrCreateMallocFunction(llvm::Module* module) {
+    llvm::Function* mallocFunc = module->getFunction("malloc");
+    if (!mallocFunc) {
+        llvm::FunctionType* mallocType = llvm::FunctionType::get(
+            llvm::PointerType::get(llvm::Type::getInt8Ty(module->getContext()), 0),
+            {llvm::Type::getInt64Ty(module->getContext())},
+            false
+        );
+        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", module);
+    }
+    return mallocFunc;
+}
+
 llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
     InitializeBuiltinSymbols();
     
@@ -406,28 +421,23 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
             }
         }
         
-        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-        if (!mallocFunc) {
-            llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                {llvm::Type::getInt64Ty(Builder.getContext())},
-                false
-            );
-            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-        }
+        llvm::Module* module = Builder.GetInsertBlock()->getParent()->getParent();
+        llvm::Function* mallocFunc = GetOrCreateMallocFunction(module);
         
         uint64_t arraySize = ArrayNodePtr->elements.size();
-        uint64_t elementSize = Builder.GetInsertBlock()->getParent()->getParent()->getDataLayout().getTypeAllocSize(ElementType);
-        llvm::Value* totalSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), arraySize * elementSize);
+        uint64_t elementSize = module->getDataLayout().getTypeAllocSize(ElementType);
+        uint64_t totalSize = arraySize * elementSize;
         
-        llvm::Value* arrayPtr = Builder.CreateCall(mallocFunc, {totalSize});
-        if (!arrayPtr) {
+        llvm::Value* sizeValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), totalSize);
+        llvm::Value* rawPtr = Builder.CreateCall(mallocFunc, {sizeValue});
+        
+        if (!rawPtr) {
             Write("Expression Generation", "Failed to allocate memory for array" + Location, 2, true, true, "");
             return nullptr;
         }
         
         llvm::Type* typedPtrType = llvm::PointerType::get(ElementType, 0);
-        llvm::Value* typedArrayPtr = Builder.CreatePointerCast(arrayPtr, typedPtrType);
+        llvm::Value* typedArrayPtr = Builder.CreatePointerCast(rawPtr, typedPtrType);
         
         for (size_t i = 0; i < ArrayNodePtr->elements.size(); ++i) {
             llvm::Value* elementValue = GenerateExpression(ArrayNodePtr->elements[i], Builder, SymbolStack, Methods);
@@ -488,6 +498,20 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
         }
         
         llvm::Type* allocatedType = allocaInst->getAllocatedType();
+        
+        if (allocatedType->isPointerTy()) {
+            llvm::Value* heapArrayPtr = Builder.CreateLoad(allocatedType, allocaInst);
+            llvm::Value* indexValue = GenerateExpression(AccessNodePtr->expr, Builder, SymbolStack, Methods);
+            
+            if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Type* elementType = allocatedType;
+            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(elementType, heapArrayPtr, indexValue);
+            return Builder.CreateLoad(elementType, elementPtr);
+        }
         
         if (AccessNodePtr->expr->type == NodeType::Array) {
             auto* IndexArrayPtr = static_cast<ArrayNode*>(AccessNodePtr->expr.get());

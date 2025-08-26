@@ -81,8 +81,43 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
             
             llvm::Type* allocatedType = allocaInst->getAllocatedType();
             
+            if (allocatedType->isPointerTy()) {
+                llvm::Value* heapArrayPtr = Builder.CreateLoad(allocatedType, allocaInst);
+                llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, Builder, SymbolStack, Methods);
+                
+                if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                    Write("Block Generator", "Invalid array index in heap array assignment" + StmtLocation, 2, true, true, "");
+                    continue;
+                }
+                
+                llvm::Type* elementType = allocatedType;
+                if (rvalue->getType() != elementType) {
+                    if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                        rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                    } else if (elementType->isFloatTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        } else if (rvalue->getType()->isDoubleTy()) {
+                            rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                        }
+                    } else if (elementType->isDoubleTy()) {
+                        if (rvalue->getType()->isIntegerTy()) {
+                            rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        } else if (rvalue->getType()->isFloatTy()) {
+                            rvalue = Builder.CreateFPExt(rvalue, elementType);
+                        }
+                    } else {
+                        Write("Block Generator", "Type mismatch in heap array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                }
+                
+                llvm::Value* elementPtr = Builder.CreateInBoundsGEP(elementType, heapArrayPtr, indexValue);
+                Builder.CreateStore(rvalue, elementPtr);
+                continue;
+            }
+            
             if (ArrayAssign->indexExpr->type == NodeType::Array) {
-                // Multi-dimensional array assignment
                 auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
                 std::vector<llvm::Value*> indices;
                 indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
@@ -144,7 +179,6 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 Builder.CreateStore(rvalue, elementPtr);
                 
             } else {
-                // Single-dimensional array assignment
                 llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, Builder, SymbolStack, Methods);
                 if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                     Write("Block Generator", "Invalid array index in array assignment" + StmtLocation, 2, true, true, "");
@@ -238,6 +272,42 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 }
                 
                 llvm::Type* allocatedType = allocaInst->getAllocatedType();
+                
+                if (allocatedType->isPointerTy()) {
+                    llvm::Value* heapArrayPtr = Builder.CreateLoad(allocatedType, allocaInst);
+                    llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+                    
+                    if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                        Write("Block Generator", "Invalid array index in heap array assignment" + StmtLocation, 2, true, true, "");
+                        continue;
+                    }
+                    
+                    llvm::Type* elementType = allocatedType;
+                    if (rvalue->getType() != elementType) {
+                        if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
+                            rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                        } else if (elementType->isFloatTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                            } else if (rvalue->getType()->isDoubleTy()) {
+                                rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                            }
+                        } else if (elementType->isDoubleTy()) {
+                            if (rvalue->getType()->isIntegerTy()) {
+                                rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                            } else if (rvalue->getType()->isFloatTy()) {
+                                rvalue = Builder.CreateFPExt(rvalue, elementType);
+                            }
+                        } else {
+                            Write("Block Generator", "Type mismatch in heap array assignment" + StmtLocation, 2, true, true, "");
+                            continue;
+                        }
+                    }
+                    
+                    llvm::Value* elementPtr = Builder.CreateInBoundsGEP(elementType, heapArrayPtr, indexValue);
+                    Builder.CreateStore(rvalue, elementPtr);
+                    continue;
+                }
                 
                 if (ArrayAccess->expr->type == NodeType::Array) {
                     auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAccess->expr.get());
