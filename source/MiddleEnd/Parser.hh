@@ -13,6 +13,7 @@ public:
     Parser(const std::vector<Token>& t);
 
     const Token& peek(int offset = 0) const;
+    const Token& peekNext() const;
     const Token& advance();
     bool match(int tokenType);
     const Token& consume(int tokenType, const std::string& expectedValue = "");

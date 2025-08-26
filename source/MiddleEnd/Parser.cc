@@ -10,6 +10,10 @@ const Token& Parser::peek(int offset) const {
     return tokens[idx];
 }
 
+const Token& Parser::peekNext() const {
+    return peek(1);
+}
+
 const Token& Parser::advance() {
     if (index < tokens.size()) return tokens[index++];
     return tokens.back();

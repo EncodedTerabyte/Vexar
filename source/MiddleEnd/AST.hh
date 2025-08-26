@@ -31,6 +31,7 @@ struct NodeType {
     static constexpr int ArrayAccess = 22;
     static constexpr int ArrayAssignment = 23;
     static constexpr int InlinePreProc = 24;
+    static constexpr int CompoundAssignment = 25;
 };
 
 struct ASTNode {
@@ -198,7 +199,6 @@ struct VariableNode : ASTNode {
     }
 
 };
-
 
 struct AssignmentOpNode : public ASTNode {
     std::unique_ptr<ASTNode> left;

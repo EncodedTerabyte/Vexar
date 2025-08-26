@@ -108,7 +108,9 @@ void Generator::ValidateModule() {
             Function.getName() != "scanf" && Function.getName() != "malloc" && 
             Function.getName() != "sprintf" && Function.getName() != "strlen" &&
             Function.getName() != "strcpy" && Function.getName() != "strcat" &&
-            Function.getName() != "strtod" && Function.getName() != "strcmp") {
+            Function.getName() != "strtod" && Function.getName() != "strcmp" &&
+            Function.getName() != "atoi" && Function.getName() != "atof" &&
+            Function.getName() != "exit") {
             
             auto userFuncIt = UserFunctions.find(Function.getName().str());
             if (userFuncIt == UserFunctions.end()) {
@@ -174,7 +176,10 @@ void Generator::ValidateModule() {
                         CalledFunc->getName() != "strcpy" &&
                         CalledFunc->getName() != "strcat" &&
                         CalledFunc->getName() != "strtod" &&
-                        CalledFunc->getName() != "strcmp") {
+                        CalledFunc->getName() != "strcmp" &&
+                        CalledFunc->getName() != "atoi" &&
+                        CalledFunc->getName() != "atof" &&
+                        CalledFunc->getName() != "exit") {
 
                       auto userFuncIt =
                           UserFunctions.find(CalledFunc->getName().str());
@@ -390,7 +395,8 @@ void Generator::ValidateModule() {
             Function.getName() != "malloc" && Function.getName() != "sprintf" &&
             Function.getName() != "strlen" && Function.getName() != "strcpy" &&
             Function.getName() != "strcat" && Function.getName() != "strtod" &&
-            Function.getName() != "strcmp") {
+            Function.getName() != "strcmp" && Function.getName() != "atoi" &&
+            Function.getName() != "atof" && Function.getName() != "exit") {
           Write("Validator",
                 "Function '" + Function.getName().str() +
                     "' may not return a value on all code paths",
@@ -403,10 +409,6 @@ void Generator::ValidateModule() {
             }
         }
     }
-    
-    /* if (UserFunctions.find("main") == UserFunctions.end()) {
-        Write("Validator", "No main function found - program entry point missing", 2, true, true, "");
-    } */
     
     Write("Validator", "Module validation completed", 3, true, true, "");
 }

@@ -64,9 +64,7 @@ void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Trip
         int Result = std::system(ClangCommand.c_str());
         std::filesystem::remove(TempLLFile);
         
-        if (Result == 0) {
-            Write("CodeGen", "Generated assembly", 3, true, true, "");
-        } else {
+        if (Result != 0) {
             Write("CodeGen", "Assembly generation failed", 2, true, true, "");
         }
         return;
@@ -79,9 +77,7 @@ void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Trip
         int Result = std::system(ClangCommand.c_str());
         std::filesystem::remove(TempLLFile);
         
-        if (Result == 0) {
-            Write("CodeGen", "Generated object file", 3, true, true, "");
-        } else {
+        if (Result != 0) {
             Write("CodeGen", "Object file generation failed", 2, true, true, "");
         }
         return;
@@ -118,9 +114,7 @@ void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Trip
     int Result = std::system(ClangCommand.c_str());
     std::filesystem::remove(TempLLFile);
     
-    if (Result == 0) {
-        Write("CodeGen", "Generated executable", 3, true, true, "");
-    } else {
+    if (Result != 0) {
         Write("CodeGen", "Compilation failed for target: " + Triple, 2, true, true, "");
     }
 }

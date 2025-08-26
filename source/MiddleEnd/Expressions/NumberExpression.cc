@@ -193,6 +193,28 @@ namespace NumberExpression {
 
    std::unique_ptr<ASTNode> ParseUnary(Parser& parser, const std::set<std::string>& stopTokens, bool& hasNumbers, bool& hasStrings) {
        const Token& tok = parser.peek();
+       
+       if (tok.type == TokenType::Operator && tok.value == "-") {
+           if (parser.peekNext().type == TokenType::Number || parser.peekNext().type == TokenType::Float) {
+               parser.advance();
+               Token numTok = parser.advance();
+               
+               hasNumbers = true;
+               auto node = std::make_unique<NumberNode>();
+               node->type = NodeType::Number;
+               node->token = numTok;
+               try {
+                   node->value = -std::stod(numTok.value);
+               } catch (...) {
+                   Write("Parser", "Invalid numeric literal '-" + numTok.value + "' at line " +
+                         std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                         2, true, true, "");
+                   return nullptr;
+               }
+               return node;
+           }
+       }
+       
        if (tok.type == TokenType::Operator && (tok.value == "-" || tok.value == "+" || tok.value == "!" || tok.value == "~")) {
            parser.advance();
            auto node = std::make_unique<UnaryOpNode>();
@@ -208,6 +230,7 @@ namespace NumberExpression {
            }
            return node;
        }
+       
        return ParsePrimary(parser, stopTokens, hasNumbers, hasStrings);
    }
    

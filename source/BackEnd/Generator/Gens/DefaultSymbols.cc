@@ -278,4 +278,166 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         
         return bufferPtr;
     };
+
+    Builtins["int"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for int function", 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for int" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ArgType = ArgValue->getType();
+        
+        if (ArgType->isIntegerTy(32)) {
+            return ArgValue;
+        } else if (ArgType->isFloatingPointTy()) {
+            return Builder.CreateFPToSI(ArgValue, Builder.getInt32Ty());
+        } else if (ArgType->isIntegerTy(8)) {
+            return Builder.CreateSExt(ArgValue, Builder.getInt32Ty());
+        } else if (ArgType->isIntegerTy(1)) {
+            return Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
+        } else if (ArgType->isPointerTy()) {
+            llvm::Function* atoiFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("atoi");
+            if (!atoiFunc) {
+                llvm::FunctionType* atoiType = llvm::FunctionType::get(
+                    llvm::Type::getInt32Ty(Builder.getContext()),
+                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    false
+                );
+                atoiFunc = llvm::Function::Create(atoiType, llvm::Function::ExternalLinkage, "atoi", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+            return Builder.CreateCall(atoiFunc, {ArgValue});
+        } else {
+            Write("Expression Generation", "Unsupported argument type for int function" + Location, 2, true, true, "");
+            return nullptr;
+        }
+    };
+
+    Builtins["float"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for float function", 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for float" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ArgType = ArgValue->getType();
+        
+        if (ArgType->isFloatTy()) {
+            return ArgValue;
+        } else if (ArgType->isDoubleTy()) {
+            return Builder.CreateFPTrunc(ArgValue, Builder.getFloatTy());
+        } else if (ArgType->isIntegerTy()) {
+            return Builder.CreateSIToFP(ArgValue, Builder.getFloatTy());
+        } else if (ArgType->isPointerTy()) {
+            llvm::Function* atofFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("atof");
+            if (!atofFunc) {
+                llvm::FunctionType* atofType = llvm::FunctionType::get(
+                    llvm::Type::getDoubleTy(Builder.getContext()),
+                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    false
+                );
+                atofFunc = llvm::Function::Create(atofType, llvm::Function::ExternalLinkage, "atof", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+            llvm::Value* doubleResult = Builder.CreateCall(atofFunc, {ArgValue});
+            return Builder.CreateFPTrunc(doubleResult, Builder.getFloatTy());
+        } else {
+            Write("Expression Generation", "Unsupported argument type for float function" + Location, 2, true, true, "");
+            return nullptr;
+        }
+    };
+
+    Builtins["len"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for len function", 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for len" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        if (ArgValue->getType()->isPointerTy()) {
+            llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
+            if (!strlenFunc) {
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                    llvm::Type::getInt64Ty(Builder.getContext()),
+                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    false
+                );
+                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+            llvm::Value* length = Builder.CreateCall(strlenFunc, {ArgValue});
+            return Builder.CreateTrunc(length, Builder.getInt32Ty());
+        } else {
+            Write("Expression Generation", "Unsupported argument type for len function" + Location, 2, true, true, "");
+            return nullptr;
+        }
+    };
+
+    Builtins["char"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for char function", 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for char" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ArgType = ArgValue->getType();
+        
+        if (ArgType->isIntegerTy(8)) {
+            return ArgValue;
+        } else if (ArgType->isIntegerTy()) {
+            return Builder.CreateTrunc(ArgValue, Builder.getInt8Ty());
+        } else {
+            Write("Expression Generation", "Unsupported argument type for char function" + Location, 2, true, true, "");
+            return nullptr;
+        }
+    };
+
+    Builtins["exit"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        llvm::Function* exitFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("exit");
+        if (!exitFunc) {
+            llvm::FunctionType* exitType = llvm::FunctionType::get(
+                llvm::Type::getVoidTy(Builder.getContext()),
+                {llvm::Type::getInt32Ty(Builder.getContext())},
+                false
+            );
+            exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", Builder.GetInsertBlock()->getParent()->getParent());
+        }
+        
+        llvm::Value* exitCode = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+        if (!args.empty()) {
+            llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+            if (ArgValue && ArgValue->getType()->isIntegerTy(32)) {
+                exitCode = ArgValue;
+            }
+        }
+        
+        Builder.CreateCall(exitFunc, {exitCode});
+        return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+    };
 }

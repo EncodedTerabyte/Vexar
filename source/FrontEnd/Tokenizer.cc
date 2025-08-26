@@ -2,14 +2,35 @@
 
 std::vector<Token> Tokenize(const std::map<unsigned int, std::string>& FileContents) {
     std::vector<Token> tokens;
+    bool inBlockComment = false;
 
     for (const auto& [lineNumber, line] : FileContents) {
         size_t i = 0;
         while (i < line.size()) {
             char c = line[i];
 
+            if (inBlockComment) {
+                if (c == '*' && i + 1 < line.size() && line[i + 1] == '/') {
+                    inBlockComment = false;
+                    i += 2;
+                } else {
+                    ++i;
+                }
+                continue;
+            }
+
             if (isspace(c)) {
                 ++i;
+                continue;
+            }
+
+            if (c == '/' && i + 1 < line.size() && line[i + 1] == '/') {
+                break;
+            }
+
+            if (c == '/' && i + 1 < line.size() && line[i + 1] == '*') {
+                inBlockComment = true;
+                i += 2;
                 continue;
             }
 

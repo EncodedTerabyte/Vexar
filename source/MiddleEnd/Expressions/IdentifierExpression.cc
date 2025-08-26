@@ -4,7 +4,6 @@
 #include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 namespace IdentifierExpression {
-
     std::unique_ptr<IdentifierNode> Create(Parser& parser) {
         Token tok = parser.advance();
         auto node = std::make_unique<IdentifierNode>();
@@ -152,12 +151,29 @@ namespace IdentifierExpression {
                 }
 
                 auto compAssignNode = std::make_unique<CompoundAssignmentOpNode>();
-                compAssignNode->type = NodeType::Assignment;
+                compAssignNode->type = NodeType::CompoundAssignment;
                 compAssignNode->token = opTok;
                 compAssignNode->left = std::move(node);
                 compAssignNode->right = std::move(right);
                 compAssignNode->op = opTok.value;
                 return compAssignNode;
+            } else if (nextTok.value == "=") {
+                Token opTok = parser.advance();
+                std::set<std::string> stopTokens = {";", "\n", ")"};
+                auto right = NumberExpression::ParseExpression(parser, stopTokens);
+                if (!right) {
+                    Write("Parser", "Invalid right-hand side in assignment for identifier '" + node->name +
+                          "' at line " + std::to_string(opTok.line) +
+                          ", column " + std::to_string(opTok.column), 2, true, true, "");
+                    return nullptr;
+                }
+
+                auto assignNode = std::make_unique<AssignmentOpNode>();
+                assignNode->type = NodeType::Assignment;
+                assignNode->token = opTok;
+                assignNode->left = std::move(node);
+                assignNode->right = std::move(right);
+                return assignNode;
             }
         }
 

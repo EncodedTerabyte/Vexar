@@ -81,10 +81,10 @@ llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& Al
     }
 
     if (mergeNeeded) {
-        mergeBB->insertInto(currentFunc);
+        currentFunc->insert(currentFunc->end(), mergeBB);
         Builder.SetInsertPoint(mergeBB);
     } else {
-        mergeBB->deleteValue();
+        mergeBB->eraseFromParent();
     }
 
     return nullptr;

@@ -33,7 +33,7 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
     if (tok.value == "func") {
         return FunctionExpression::Parse(parser);
     }
-    if (tok.type == TokenType::Operator && tok.value == "=") {
+    if (tok.value == "=") {
         return AssignmentExpression::Parse(parser);
     }
     if (tok.type == TokenType::Delimiter && tok.value == "{") {
