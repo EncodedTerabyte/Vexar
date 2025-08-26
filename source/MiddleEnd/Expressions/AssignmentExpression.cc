@@ -1,5 +1,6 @@
 #include "AssignmentExpression.hh"
 #include "../ParseExpression.hh"
+#include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 namespace AssignmentExpression {
     std::unique_ptr<ASTNode> Parse(Parser& parser) {
@@ -12,6 +13,13 @@ namespace AssignmentExpression {
         if (tok.type == TokenType::Operator && tok.value == "=") {
             parser.advance();
             auto right = Main::ParseExpression(parser);
+            if (!right) {
+                Write("Parser", "Expected expression after '=' for assignment to '" +
+                      left->name + "' at line " + std::to_string(tok.line) +
+                      ", column " + std::to_string(tok.column),
+                      2, true, true, "");
+                return nullptr;
+            }
 
             auto assignNode = std::make_unique<AssignmentOpNode>();
             assignNode->type = NodeType::Assignment;
@@ -20,7 +28,11 @@ namespace AssignmentExpression {
             assignNode->right = std::move(right);
             return assignNode;
         }
-
-        return left;
+        
+        Write("Parser", "Expected '=' after identifier '" + left->name +
+              "' at line " + std::to_string(tok.line) +
+              ", column " + std::to_string(tok.column),
+              2, true, true, "");
+        return nullptr;
     }
 }

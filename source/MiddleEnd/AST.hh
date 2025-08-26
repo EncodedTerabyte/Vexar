@@ -29,6 +29,7 @@ struct NodeType {
     static constexpr int Cast = 20;
     static constexpr int Array = 21;
     static constexpr int ArrayAccess = 22;
+    static constexpr int InlinePreProc = 23;
 };
 
 struct ASTNode {
@@ -451,5 +452,14 @@ struct ArrayAccessNode : ASTNode {
             oss << "\n" << expr->get(nextPrefix(prefix, isLast), true);
         }
         return oss.str();
+    }
+};
+
+struct InlinePreprocessor : ASTNode {
+    int line;
+    int column;
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        return "";
     }
 };

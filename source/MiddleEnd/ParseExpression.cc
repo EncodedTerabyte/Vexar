@@ -4,6 +4,7 @@
 #include "Expressions/ReturnExpression.hh"
 #include "Expressions/StringExpression.hh"
 #include "Nodes/ParenNode.hh"
+#include "../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, const std::set<std::string>& stopTokens) {
     const Token& tok = parser.peek();
@@ -42,11 +43,23 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
             return BlockNodeContainer::ParseBlock(parser);
         }
     }
-    
     if (tok.type == TokenType::String || tok.type == TokenType::Character) {
         return StringExpression::Parse(parser, precedence, stopTokens);
     }
+    if (tok.type == TokenType::Keyword && (tok.value == "inline" || tok.value == "always_inline")) {
+        auto Node = std::make_unique<InlinePreprocessor>();
+        Node->line = tok.line;
+        Node->column = tok.column;
+        Node->type = NodeType::InlinePreProc;
+        parser.consume(TokenType::Keyword, tok.value);
+        return Node;
+    }
     
+    Write("Parser",
+          "Unexpected token '" + tok.value + "' at line " +
+          std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+          2, true);
+
     parser.advance();
     return nullptr;
 }

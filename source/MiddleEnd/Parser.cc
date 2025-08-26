@@ -1,4 +1,5 @@
 #include "Parser.hh"
+#include "../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 Parser::Parser(const std::vector<Token>& t) : tokens(t) {}
 
@@ -25,7 +26,15 @@ bool Parser::match(int tokenType) {
 const Token& Parser::consume(int tokenType, const std::string& expectedValue) {
     const Token& tok = advance();
     if (tok.type != tokenType || (!expectedValue.empty() && tok.value != expectedValue)) {
-        Write("Parser", "Unexpected token: " + tok.value, 2, true);
+        Write(
+            "Parser",
+            "Unexpected token '" + tok.value + 
+            "' at line " + std::to_string(tok.line) + 
+            ", column " + std::to_string(tok.column) +
+            (expectedValue.empty() ? "" : " (expected '" + expectedValue + "')"),
+            2,
+            true
+        );
     }
     return tok;
 }
@@ -41,8 +50,17 @@ const Token& Parser::expect(int tokenType, const std::string& expectedValue) {
     if (check(tokenType, expectedValue)) {
         return advance();
     }
-    Write("Parser", "Expected token: " + expectedValue + " but got: " + peek().value, 2, true);
-    return peek();
+    const Token& tok = peek();
+    Write(
+        "Parser",
+        "Expected '" + expectedValue + 
+        "' but got '" + tok.value + 
+        "' at line " + std::to_string(tok.line) + 
+        ", column " + std::to_string(tok.column),
+        2,
+        true
+    );
+    return tok;
 }
 
 bool Parser::lookahead(int offset, int tokenType, const std::string& expectedValue) const {

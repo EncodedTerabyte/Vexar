@@ -43,7 +43,14 @@ namespace NumberExpression {
            auto node = std::make_unique<NumberNode>();
            node->type = NodeType::Number;
            node->token = tok;
-           node->value = std::stod(tok.value);
+           try {
+               node->value = std::stod(tok.value);
+           } catch (...) {
+               Write("Parser", "Invalid numeric literal '" + tok.value + "' at line " +
+                     std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                     2, true, true, "");
+               return nullptr;
+           }
            return node;
        }
 
@@ -58,6 +65,12 @@ namespace NumberExpression {
        }
 
        if (tok.type == TokenType::Character) {
+           if (tok.value.empty()) {
+               Write("Parser", "Empty character literal at line " +
+                     std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                     2, true, true, "");
+               return nullptr;
+           }
            hasStrings = true;
            parser.advance();
            auto node = std::make_unique<CharacterNode>();
@@ -82,6 +95,12 @@ namespace NumberExpression {
                if (parser.peek().type == TokenType::Delimiter && parser.peek().value == ")") {
                    parser.advance();
                    auto expr = ParseUnary(parser, stopTokens, hasNumbers, hasStrings);
+                   if (!expr) {
+                       Write("Parser", "Invalid cast expression at line " +
+                             std::to_string(nextTok.line) + ", column " +
+                             std::to_string(nextTok.column), 2, true, true, "");
+                       return nullptr;
+                   }
                    auto castNode = std::make_unique<CastNode>();
                    castNode->type = NodeType::Cast;
                    castNode->targetType = typeName;
@@ -98,8 +117,19 @@ namespace NumberExpression {
                }
            } else {
                auto inner = ParseBinary(parser, 0, stopTokens, hasNumbers, hasStrings);
+               if (!inner) {
+                   Write("Parser", "Invalid parenthesized expression at line " +
+                         std::to_string(nextTok.line) + ", column " +
+                         std::to_string(nextTok.column), 2, true, true, "");
+                   return nullptr;
+               }
                if (parser.peek().type == TokenType::Delimiter && parser.peek().value == ")") {
                    parser.advance();
+               } else {
+                   Write("Parser", "Expected ')' at line " +
+                         std::to_string(parser.peek().line) + ", column " +
+                         std::to_string(parser.peek().column), 2, true, true, "");
+                   return nullptr;
                }
                auto parenNode = std::make_unique<ParenNode>();
                parenNode->type = NodeType::Paren;
@@ -108,6 +138,9 @@ namespace NumberExpression {
            }
        }
 
+       Write("Parser", "Unexpected token '" + tok.value + "' at line " +
+             std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+             2, true, true, "");
        return nullptr;
    }
 
@@ -122,6 +155,9 @@ namespace NumberExpression {
            if (tokPrec < precedence) break;
 
            if (hasNumbers && hasStrings) {
+               Write("Parser", "Type error: cannot mix numbers and strings in binary expression at line " +
+                     std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                     2, true, true, "");
                return nullptr;
            }
 
@@ -130,10 +166,16 @@ namespace NumberExpression {
            auto right = ParseBinary(parser, nextPrec, stopTokens, hasNumbers, hasStrings);
            
            if (!right) {
+               Write("Parser", "Invalid right-hand side in binary expression at line " +
+                     std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                     2, true, true, "");
                return nullptr;
            }
            
            if (hasNumbers && hasStrings) {
+               Write("Parser", "Type error: cannot mix numbers and strings in binary expression at line " +
+                     std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+                     2, true, true, "");
                return nullptr;
            }
 
@@ -158,6 +200,12 @@ namespace NumberExpression {
            node->token = tok;
            node->op = tok.value;
            node->operand = ParseUnary(parser, stopTokens, hasNumbers, hasStrings);
+           if (!node->operand) {
+               Write("Parser", "Invalid operand for unary operator '" + tok.value +
+                     "' at line " + std::to_string(tok.line) + ", column " +
+                     std::to_string(tok.column), 2, true, true, "");
+               return nullptr;
+           }
            return node;
        }
        return ParsePrimary(parser, stopTokens, hasNumbers, hasStrings);

@@ -1,6 +1,7 @@
 #include "VariableExpression.hh"
 #include "../ParseExpression.hh"
 #include "IdentifierExpression.hh"
+#include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 #include <set>
 
 namespace StringExpression {
@@ -17,6 +18,12 @@ namespace StringExpression {
             return node;
         }
         else if (tok.type == TokenType::Character) {
+            if (tok.value.empty()) {
+                Write("Parser", "Empty character literal at line " +
+                      std::to_string(tok.line) + ", column " +
+                      std::to_string(tok.column), 2, true, true, "");
+                return nullptr;
+            }
             parser.advance();
             auto node = std::make_unique<CharacterNode>();
             node->type = NodeType::Character;
@@ -31,6 +38,9 @@ namespace StringExpression {
             parser.advance();
             auto inner = Parse(parser, 0, {")"});
             if (parser.peek().type != TokenType::Delimiter || parser.peek().value != ")") {
+                Write("Parser", "Expected ')' at line " +
+                      std::to_string(parser.peek().line) + ", column " +
+                      std::to_string(parser.peek().column), 2, true, true, "");
                 return nullptr;
             }
             parser.advance();
@@ -40,6 +50,9 @@ namespace StringExpression {
             return parenNode;
         }
 
+        Write("Parser", "Unexpected token '" + tok.value + "' at line " +
+              std::to_string(tok.line) + ", column " + std::to_string(tok.column),
+              2, true, true, "");
         return nullptr;
     }
 
@@ -51,7 +64,12 @@ namespace StringExpression {
             if (!stopTokens.empty() && stopTokens.count(parser.peek().value)) break;
             parser.advance();
             auto right = ParseSingle(parser, stopTokens);
-            if (!right) break;
+            if (!right) {
+                Write("Parser", "Invalid string concatenation at line " +
+                      std::to_string(parser.peek().line) + ", column " +
+                      std::to_string(parser.peek().column), 2, true, true, "");
+                return nullptr;
+            }
 
             auto binOp = std::make_unique<BinaryOpNode>();
             binOp->type = NodeType::BinaryOp;

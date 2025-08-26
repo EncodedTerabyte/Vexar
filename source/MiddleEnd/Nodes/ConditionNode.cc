@@ -29,7 +29,10 @@ static std::unique_ptr<ASTNode> ParseConditionBinary(Parser& parser, int precede
         parser.advance();
         left = ParseConditionBinary(parser, 0);
         if (parser.peek().type != TokenType::Delimiter || parser.peek().value != ")") {
-            Write("Condition Expression", "Expected ')'", 2, true);
+            Write("Condition Expression",
+                  "Expected ')' at line " + std::to_string(tok.line) +
+                  ", column " + std::to_string(tok.column),
+                  2, true);
         } else {
             parser.advance();
         }
@@ -41,7 +44,11 @@ static std::unique_ptr<ASTNode> ParseConditionBinary(Parser& parser, int precede
                (tok.type == TokenType::Operator && (tok.value == "-" || tok.value == "+" || tok.value == "!" || tok.value == "~"))) {
         left = Main::ParseExpression(parser, 0, {")"});
     } else {
-        Write("Condition Expression", "Unexpected token: " + tok.value, 2, true);
+        Write("Condition Expression",
+              "Unexpected token '" + tok.value + "' at line " +
+              std::to_string(tok.line) + ", column " +
+              std::to_string(tok.column),
+              2, true);
         parser.advance();
         return nullptr;
     }
@@ -54,6 +61,15 @@ static std::unique_ptr<ASTNode> ParseConditionBinary(Parser& parser, int precede
         parser.advance();
         int nextPrec = IsRightAssociativeCondition(nextTok) ? tokPrec : tokPrec + 1;
         auto right = ParseConditionBinary(parser, nextPrec);
+
+        if (!right) {
+            Write("Condition Expression",
+                  "Missing right-hand side of operator '" + nextTok.value +
+                  "' at line " + std::to_string(nextTok.line) +
+                  ", column " + std::to_string(nextTok.column),
+                  2, true);
+            return nullptr;
+        }
 
         auto binNode = std::make_unique<BinaryOpNode>();
         binNode->type = NodeType::BinaryOp;
@@ -71,10 +87,17 @@ static std::unique_ptr<ASTNode> ParseConditionBinary(Parser& parser, int precede
 namespace ConditionNodeContainer {
     std::unique_ptr<ConditionNode> ParseCondition(Parser& parser) {
         auto expr = ParseConditionBinary(parser, 0);
+        if (!expr) {
+            const Token& badTok = parser.peek();
+            Write("Condition Expression",
+                  "Invalid condition at line " + std::to_string(badTok.line) +
+                  ", column " + std::to_string(badTok.column),
+                  2, true);
+            return nullptr;
+        }
         auto condNode = std::make_unique<ConditionNode>();
         condNode->type = NodeType::Condition;
         condNode->expression = std::move(expr);
         return condNode;
     }
-
 }
