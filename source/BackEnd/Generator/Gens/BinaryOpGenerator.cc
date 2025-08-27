@@ -67,12 +67,40 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
     };
 
     if (BinOpNode->op == "+") {
+        if (Left->getType()->isIntegerTy(8) && Right->getType()->isIntegerTy(8)) {
+            llvm::LLVMContext& ctx = Builder.getContext();
+            llvm::Type* i8Type = llvm::Type::getInt8Ty(ctx);
+            
+            llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
+            if (!mallocFunc) {
+                llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                    llvm::PointerType::get(ctx, 0),
+                    {llvm::Type::getInt64Ty(ctx)},
+                    false
+                );
+                mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+            
+            llvm::Value* size = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 3);
+            llvm::Value* buffer = Builder.CreateCall(mallocFunc, {size});
+            
+            llvm::Value* ptr0 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 0));
+            llvm::Value* ptr1 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 1));
+            llvm::Value* ptr2 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 2));
+            
+            Builder.CreateStore(Left, ptr0);
+            Builder.CreateStore(Right, ptr1);
+            Builder.CreateStore(llvm::ConstantInt::get(i8Type, 0), ptr2);
+            
+            return buffer;
+        }
+        
         if (Left->getType()->isPointerTy() && Right->getType()->isPointerTy()) {
             llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
             if (!strlenFunc) {
                 llvm::FunctionType* strlenType = llvm::FunctionType::get(
                     llvm::Type::getInt64Ty(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    {llvm::PointerType::get(Builder.getContext(), 0)},
                     false
                 );
                 strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
@@ -81,7 +109,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
             if (!mallocFunc) {
                 llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                    llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
+                    llvm::PointerType::get(Builder.getContext(), 0),
                     {llvm::Type::getInt64Ty(Builder.getContext())},
                     false
                 );
@@ -91,8 +119,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
             if (!strcpyFunc) {
                 llvm::FunctionType* strcpyType = llvm::FunctionType::get(
-                    llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    llvm::PointerType::get(Builder.getContext(), 0),
+                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
                     false
                 );
                 strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
@@ -101,8 +129,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             llvm::Function* strcatFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcat");
             if (!strcatFunc) {
                 llvm::FunctionType* strcatType = llvm::FunctionType::get(
-                    llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    llvm::PointerType::get(Builder.getContext(), 0),
+                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
                     false
                 );
                 strcatFunc = llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", Builder.GetInsertBlock()->getParent()->getParent());
@@ -131,7 +159,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
                 if (!mallocFunc) {
                     llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
+                        llvm::PointerType::get(Builder.getContext(), 0),
                         {llvm::Type::getInt64Ty(Builder.getContext())},
                         false
                     );
@@ -142,8 +170,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 if (!sprintfFunc) {
                     llvm::FunctionType* sprintfType = llvm::FunctionType::get(
                         llvm::Type::getInt32Ty(Builder.getContext()),
-                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), 
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        {llvm::PointerType::get(Builder.getContext(), 0), 
+                        llvm::PointerType::get(Builder.getContext(), 0)},
                         true
                     );
                     sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", Builder.GetInsertBlock()->getParent()->getParent());
@@ -155,13 +183,13 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                     return nullptr;
                 }
                 llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
-                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
+                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(Builder.getContext(), 0));
                 Builder.CreateCall(sprintfFunc, {rightStr, formatPtr, Right});
             } else if (Right->getType()->isFloatingPointTy()) {
                 llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
                 if (!mallocFunc) {
                     llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
+                        llvm::PointerType::get(Builder.getContext(), 0),
                         {llvm::Type::getInt64Ty(Builder.getContext())},
                         false
                     );
@@ -172,8 +200,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 if (!sprintfFunc) {
                     llvm::FunctionType* sprintfType = llvm::FunctionType::get(
                         llvm::Type::getInt32Ty(Builder.getContext()),
-                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), 
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        {llvm::PointerType::get(Builder.getContext(), 0), 
+                        llvm::PointerType::get(Builder.getContext(), 0)},
                         true
                     );
                     sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", Builder.GetInsertBlock()->getParent()->getParent());
@@ -185,7 +213,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                     return nullptr;
                 }
                 llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_to_str_fmt");
-                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
+                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(Builder.getContext(), 0));
                 
                 if (Right->getType()->isFloatTy()) {
                     Right = Builder.CreateFPExt(Right, llvm::Type::getDoubleTy(Builder.getContext()));
@@ -199,7 +227,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 if (!strlenFunc) {
                     llvm::FunctionType* strlenType = llvm::FunctionType::get(
                         llvm::Type::getInt64Ty(Builder.getContext()),
-                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        {llvm::PointerType::get(Builder.getContext(), 0)},
                         false
                     );
                     strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
@@ -209,8 +237,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
                 if (!strcpyFunc) {
                     llvm::FunctionType* strcpyType = llvm::FunctionType::get(
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        llvm::PointerType::get(Builder.getContext(), 0),
+                        {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
                         false
                     );
                     strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
@@ -219,8 +247,8 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 llvm::Function* strcatFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcat");
                 if (!strcatFunc) {
                     llvm::FunctionType* strcatType = llvm::FunctionType::get(
-                        llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        llvm::PointerType::get(Builder.getContext(), 0),
+                        {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
                         false
                     );
                     strcatFunc = llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", Builder.GetInsertBlock()->getParent()->getParent());
@@ -245,28 +273,28 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         }
         
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFAdd(Left, Right, "addtmp");
         } else {
             return Builder.CreateAdd(Left, Right, "addtmp");
         }
     } else if (BinOpNode->op == "-") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFSub(Left, Right, "subtmp");
         } else {
             return Builder.CreateSub(Left, Right, "subtmp");
         }
     } else if (BinOpNode->op == "*") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFMul(Left, Right, "multmp");
         } else {
             return Builder.CreateMul(Left, Right, "multmp");
         }
     } else if (BinOpNode->op == "/") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFDiv(Left, Right, "divtmp");
         } else {
             return Builder.CreateSDiv(Left, Right, "divtmp");
@@ -279,42 +307,42 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         return Builder.CreateSRem(Left, Right, "srem");
     } else if (BinOpNode->op == ">=") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOGE(Left, Right, "fcmp_ge");
         } else {
             return Builder.CreateICmpSGE(Left, Right, "icmp_ge");
         }
     } else if (BinOpNode->op == "<=") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOLE(Left, Right, "fcmp_le");
         } else {
             return Builder.CreateICmpSLE(Left, Right, "icmp_le");
         }
     } else if (BinOpNode->op == ">") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOGT(Left, Right, "fcmp_gt");
         } else {
             return Builder.CreateICmpSGT(Left, Right, "icmp_gt");
         }
     } else if (BinOpNode->op == "<") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOLT(Left, Right, "fcmp_lt");
         } else {
             return Builder.CreateICmpSLT(Left, Right, "icmp_lt");
         }
     } else if (BinOpNode->op == "==") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOEQ(Left, Right, "fcmp_eq");
         } else {
             return Builder.CreateICmpEQ(Left, Right, "icmp_eq");
         }
     } else if (BinOpNode->op == "!=") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType->isFloatingPointTy()) {
+        if (commonType && commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpONE(Left, Right, "fcmp_ne");
         } else {
             return Builder.CreateICmpNE(Left, Right, "icmp_ne");

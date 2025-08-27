@@ -19,6 +19,9 @@ llvm::Type* GetLLVMTypeFromString(const std::string& typeName, llvm::LLVMContext
     if (typeName == "string") {
         return llvm::PointerType::get(context, 0);
     }
+    if (typeName == "char") {
+        return llvm::Type::getInt8Ty(context);
+    }
     return nullptr;
 }
 
@@ -41,6 +44,8 @@ std::string GetStringFromLLVMType(llvm::Type* type) {
     if (type->isPointerTy()) {
         return "string";
     }
-
+    if (type->isIntegerTy(8)) {
+        return "char";
+    }
     return "unknown";
 }
