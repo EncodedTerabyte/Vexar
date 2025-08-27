@@ -6,7 +6,9 @@
 #include "ConditionGenerator.hh"
 #include "VariableGenerator.hh"
 #include "ReturnGenerator.hh"
+#include "WhileGenerator.hh"
 #include "BlockGenerator.hh"
+#include "BreakGenerator.hh"
 #include "IfGenerator.hh"
 
 #include <iostream>
@@ -96,6 +98,28 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
             llvm::Value* CallResult = GenerateExpression(Statement, Builder, SymbolStack, Methods);
             if (!CallResult) {
                 Write("Block Generator", "Invalid function call expression" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+        } else if (Statement->type == NodeType::While) {
+            auto* While = static_cast<WhileNode*>(Statement.get());
+            if (!While) {
+                Write("Block Generator", "Failed to cast to WhileNode" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            llvm::Value* WhileResult = GenerateWhile(While, Builder, SymbolStack, Methods);
+            if (!WhileResult) {
+                Write("Block Generator", "Invalid while statement" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+        } else if (Statement->type == NodeType::Break) {
+            auto* Break = static_cast<BreakNode*>(Statement.get());
+            if (!Break) {
+                Write("Block Generator", "Failed to cast to BreakNode" + StmtLocation, 2, true, true, "");
+                continue;
+            }
+            llvm::Value* BreakResult = GenerateBreak(Break, Builder, SymbolStack, Methods);
+            if (!BreakResult) {
+                Write("Block Generator", "Invalid break statement" + StmtLocation, 2, true, true, "");
                 continue;
             }
         } else {

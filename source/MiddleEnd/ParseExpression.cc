@@ -18,6 +18,14 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
     if (stopTokens.count(tok.value)) {
         return nullptr;
     }
+    
+    if (tok.value == "break") {
+        auto Node = std::make_unique<BreakNode>();
+        Node->token = tok;
+        parser.advance();
+        std::cout << "breaking break token" << std::endl; 
+        return Node; 
+    }
 
     if (tok.type == TokenType::Number ||
         tok.type == TokenType::Float ||

@@ -29,7 +29,7 @@ struct Token {
 
 std::ostream& operator<<(std::ostream& os, const Token& tok);
 
-const std::set<std::string> Keywords = {"var", "if", "while", "func", "ret", "true", "false", "inline", "always_inline"};
+const std::set<std::string> Keywords = {"var", "if", "while", "func", "ret", "true", "false", "inline", "always_inline", "break"};
 
 const std::set<std::string> Operators = {
     "+", "-", "*", "/", "%",     // arithmetic

@@ -51,13 +51,10 @@ llvm::Type* GetArrayTypeFromDimensions(ASTNode* dimensionNode, llvm::Type* baseT
                 return nullptr;
             }
             
-            // Check if it's a compile-time constant
             if (llvm::ConstantInt* constDim = llvm::dyn_cast<llvm::ConstantInt>(dimValue)) {
                 uint64_t size = constDim->getZExtValue();
                 currentType = llvm::ArrayType::get(currentType, size);
             } else {
-                // For runtime values, we need to use a different approach
-                // Return a pointer type instead of a fixed array type
                 return llvm::PointerType::get(baseType, 0);
             }
         }

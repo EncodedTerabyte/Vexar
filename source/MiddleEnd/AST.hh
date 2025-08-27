@@ -32,6 +32,7 @@ struct NodeType {
     static constexpr int ArrayAssignment = 23;
     static constexpr int InlinePreProc = 24;
     static constexpr int CompoundAssignment = 25;
+    static constexpr int Break = 26;
 };
 
 struct ASTNode {
@@ -481,5 +482,13 @@ struct InlinePreprocessor : ASTNode {
 
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         return "";
+    }
+};
+
+struct BreakNode : ASTNode {
+    BreakNode() { type = NodeType::Break; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        return branch(prefix, isLast) + "[Break]";
     }
 };
