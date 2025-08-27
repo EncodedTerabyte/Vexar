@@ -15,10 +15,13 @@ llvm::Value* GenerateNumber(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilde
     }
 
     try {
-        if (NumNode->value == floor(NumNode->value)) {
-            return llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), (int)NumNode->value);
+        double value = NumNode->value;
+        
+        if (value == floor(value) && value >= INT32_MIN && value <= INT32_MAX) {
+            int32_t intValue = static_cast<int32_t>(value);
+            return llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), intValue, true);
         } else {
-            return llvm::ConstantFP::get(llvm::Type::getFloatTy(Builder.getContext()), (float)NumNode->value);
+            return llvm::ConstantFP::get(llvm::Type::getFloatTy(Builder.getContext()), static_cast<float>(value));
         }
     } catch (const std::exception& e) {
         Write("NumberGenerator", "Exception during number generation: " + std::string(e.what()) + Location, 2, true, true, "");

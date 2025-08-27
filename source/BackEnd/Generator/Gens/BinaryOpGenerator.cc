@@ -271,6 +271,12 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         } else {
             return Builder.CreateSDiv(Left, Right, "divtmp");
         }
+    } else if (BinOpNode->op == "%") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Modulo operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateSRem(Left, Right, "srem");
     } else if (BinOpNode->op == ">=") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
         if (commonType->isFloatingPointTy()) {
@@ -313,6 +319,56 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         } else {
             return Builder.CreateICmpNE(Left, Right, "icmp_ne");
         }
+    } else if (BinOpNode->op == "&&") {
+        llvm::Value* leftBool = Left;
+        llvm::Value* rightBool = Right;
+        
+        if (!Left->getType()->isIntegerTy(1)) {
+            if (Left->getType()->isFloatingPointTy()) {
+                llvm::Value* zero = llvm::ConstantFP::get(Left->getType(), 0.0);
+                leftBool = Builder.CreateFCmpONE(Left, zero, "tobool");
+            } else if (Left->getType()->isIntegerTy()) {
+                llvm::Value* zero = llvm::ConstantInt::get(Left->getType(), 0);
+                leftBool = Builder.CreateICmpNE(Left, zero, "tobool");
+            }
+        }
+        
+        if (!Right->getType()->isIntegerTy(1)) {
+            if (Right->getType()->isFloatingPointTy()) {
+                llvm::Value* zero = llvm::ConstantFP::get(Right->getType(), 0.0);
+                rightBool = Builder.CreateFCmpONE(Right, zero, "tobool");
+            } else if (Right->getType()->isIntegerTy()) {
+                llvm::Value* zero = llvm::ConstantInt::get(Right->getType(), 0);
+                rightBool = Builder.CreateICmpNE(Right, zero, "tobool");
+            }
+        }
+        
+        return Builder.CreateAnd(leftBool, rightBool, "and");
+    } else if (BinOpNode->op == "||") {
+        llvm::Value* leftBool = Left;
+        llvm::Value* rightBool = Right;
+        
+        if (!Left->getType()->isIntegerTy(1)) {
+            if (Left->getType()->isFloatingPointTy()) {
+                llvm::Value* zero = llvm::ConstantFP::get(Left->getType(), 0.0);
+                leftBool = Builder.CreateFCmpONE(Left, zero, "tobool");
+            } else if (Left->getType()->isIntegerTy()) {
+                llvm::Value* zero = llvm::ConstantInt::get(Left->getType(), 0);
+                leftBool = Builder.CreateICmpNE(Left, zero, "tobool");
+            }
+        }
+        
+        if (!Right->getType()->isIntegerTy(1)) {
+            if (Right->getType()->isFloatingPointTy()) {
+                llvm::Value* zero = llvm::ConstantFP::get(Right->getType(), 0.0);
+                rightBool = Builder.CreateFCmpONE(Right, zero, "tobool");
+            } else if (Right->getType()->isIntegerTy()) {
+                llvm::Value* zero = llvm::ConstantInt::get(Right->getType(), 0);
+                rightBool = Builder.CreateICmpNE(Right, zero, "tobool");
+            }
+        }
+        
+        return Builder.CreateOr(leftBool, rightBool, "or");
     } else {
         Write("Binary Expression", "Unsupported binary operator: " + BinOpNode->op + Location, 2, true, true, "");
         return nullptr;

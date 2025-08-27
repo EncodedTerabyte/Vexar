@@ -1,3 +1,6 @@
+// math.vexar
+
+// clamp an integer between min and max
 func clamp(x: int, min: int, max: int): int {
     if (x < min) {
         ret min
@@ -8,6 +11,22 @@ func clamp(x: int, min: int, max: int): int {
     ret x
 }
 
+// absolute values
+func abs(x: int): int {
+    if (x < 0) {
+        ret -x
+    }
+    ret x
+}
+
+func fabs(x: float): float {
+    if (x < 0.0) {
+        ret -x
+    }
+    ret x
+}
+
+// floor
 func floor(x: float): int {
     var i = (int)x
     if (x < 0 && x != (float)i) {
@@ -16,10 +35,84 @@ func floor(x: float): int {
     ret i
 }
 
+// ceil
+func ceil(x: float): int {
+    var i = (int)x
+    if ((float)i < x) {
+        ret i + 1
+    }
+    ret i
+}
+
+// round
 func round(x: float): int {
     if (x >= 0) {
         ret (int)(x + 0.5)
     } else {
         ret (int)(x - 0.5)
     }
+}
+
+// trunc
+func trunc(x: float): int {
+    ret (int)x
+}
+
+// min & max (ints)
+func min(a: int, b: int): int {
+    if (a < b) {
+        ret a
+    }
+    ret b
+}
+
+func max(a: int, b: int): int {
+    if (a > b) {
+        ret a
+    }
+    ret b
+}
+
+// min & max (floats)
+func fmin(a: float, b: float): float {
+    if (a < b) {
+        ret a
+    }
+    ret b
+}
+
+func fmax(a: float, b: float): float {
+    if (a > b) {
+        ret a
+    }
+    ret b
+}
+
+// power (x^y) recursion
+func pow(x: int, y: int): int {
+    if (y == 0) {
+        ret 1
+    }
+    ret x * pow(x, y - 1)
+}
+
+// factorial recursion
+func factorial(n: int): int {
+    if (n <= 1) {
+        ret 1
+    }
+    ret n * factorial(n - 1)
+}
+
+// gcd recursion
+func gcd(a: int, b: int): int {
+    if (b == 0) {
+        ret a
+    }
+    ret gcd(b, a % b)
+}
+
+// lcm
+func lcm(a: int, b: int): int {
+    ret (a / gcd(a, b)) * b
 }
