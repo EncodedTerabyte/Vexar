@@ -85,8 +85,8 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
            Write("Expression Generation", "Failed to cast to StringNode" + Location, 2, true, true, "");
            return nullptr;
        }
-       llvm::Value* Result = Builder.CreateGlobalString(StrNode->value, "", 0, nullptr);
-       return Result;
+       llvm::Value* GlobalStr = Builder.CreateGlobalString(StrNode->value, "str_literal");
+       return Builder.CreateInBoundsGEP(llvm::ArrayType::get(llvm::Type::getInt8Ty(Builder.getContext()), StrNode->value.length() + 1), GlobalStr, {Builder.getInt32(0), Builder.getInt32(0)});
     } else if (Expr->type == NodeType::Character) {
        auto* CharNode = static_cast<CharacterNode*>(Expr.get());
        if (!CharNode) {

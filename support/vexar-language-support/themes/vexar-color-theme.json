@@ -7,16 +7,16 @@
   "tokenColors": [
     {
       "name": "Vexar Keywords",
-      "scope": "keyword.control.vexar",
+      "scope": ["keyword.control.vexar", "keyword.declaration.vexar", "keyword.other.vexar"],
       "settings": {
         "foreground": "#569CD6"
       }
     },
     {
       "name": "Vexar Types",
-      "scope": "storage.type.vexar",
+      "scope": ["storage.type.vexar", "storage.type.primitive.vexar"],
       "settings": {
-        "foreground": "#7bc2b4"
+        "foreground": "#b94f7b"
       }
     },
     {
@@ -30,36 +30,54 @@
       "name": "Vexar Function Calls",
       "scope": "entity.name.function.vexar",
       "settings": {
-        "foreground": "#DCDCAA"
+        "foreground": "#d3d369"
       }
     },
     {
       "name": "Vexar Strings",
-      "scope": "string.quoted.double.vexar",
+      "scope": ["string.quoted.double.vexar", "string.quoted.single.vexar"],
       "settings": {
-        "foreground": "#CE9178"
+        "foreground": "#86997d"
       }
     },
     {
       "name": "Vexar Numbers",
-      "scope": "constant.numeric.vexar",
+      "scope": [
+        "constant.numeric.decimal.vexar",
+        "constant.numeric.hex.vexar",
+        "constant.numeric.binary.vexar",
+        "constant.numeric.octal.vexar"
+      ],
       "settings": {
         "foreground": "#B5CEA8"
       }
     },
     {
       "name": "Vexar Comments",
-      "scope": "comment.line.double-slash.vexar, comment.block.vexar",
+      "scope": ["comment.line.double-slash.vexar", "comment.block.vexar"],
       "settings": {
-        "foreground": "#6A9955",
+        "foreground": "#363636",
         "fontStyle": "italic"
       }
     },
     {
       "name": "Vexar Operators",
-      "scope": "keyword.operator.vexar",
+      "scope": [
+        "keyword.operator.arithmetic.vexar",
+        "keyword.operator.comparison.vexar",
+        "keyword.operator.logical.vexar",
+        "keyword.operator.bitwise.vexar",
+        "keyword.operator.assignment.vexar"
+      ],
       "settings": {
         "foreground": "#D4D4D4"
+      }
+    },
+    {
+      "name": "Vexar Identifiers",
+      "scope": "variable.other.vexar",
+      "settings": {
+        "foreground": "#9CDCFE"
       }
     }
   ]
