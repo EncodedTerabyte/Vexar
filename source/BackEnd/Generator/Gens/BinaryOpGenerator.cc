@@ -305,6 +305,36 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             return nullptr;
         }
         return Builder.CreateSRem(Left, Right, "srem");
+    } else if (BinOpNode->op == "<<") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Shift left operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateShl(Left, Right, "shltmp");
+    } else if (BinOpNode->op == ">>") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Shift right operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateAShr(Left, Right, "ashrtmp");
+    } else if (BinOpNode->op == "&") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Bitwise AND operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateAnd(Left, Right, "andtmp");
+    } else if (BinOpNode->op == "|") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Bitwise OR operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateOr(Left, Right, "ortmp");
+    } else if (BinOpNode->op == "^") {
+        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
+            Write("Binary Expression", "Bitwise XOR operator not supported on floating-point numbers" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Builder.CreateXor(Left, Right, "xortmp");
     } else if (BinOpNode->op == ">=") {
         llvm::Type* commonType = promoteToCommonType(Left, Right);
         if (commonType && commonType->isFloatingPointTy()) {

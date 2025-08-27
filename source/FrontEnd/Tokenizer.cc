@@ -82,9 +82,17 @@ std::vector<Token> Tokenize(const std::map<unsigned int, std::string>& FileConte
                 tokens.push_back(tok);
             }
             else {
+                std::string threeChar = (i + 2 < line.size()) ? line.substr(i, 3) : "";
                 std::string twoChar = (i + 1 < line.size()) ? line.substr(i, 2) : "";
                 std::string oneChar(1, c);
-                if (!twoChar.empty() && Operators.count(twoChar)) {
+                
+                if (!threeChar.empty() && Operators.count(threeChar)) {
+                    tok.value = threeChar;
+                    tok.type = TokenType::Operator;
+                    tokens.push_back(tok);
+                    i += 3;
+                }
+                else if (!twoChar.empty() && Operators.count(twoChar)) {
                     tok.value = twoChar;
                     tok.type = TokenType::Operator;
                     tokens.push_back(tok);
@@ -103,6 +111,7 @@ std::vector<Token> Tokenize(const std::map<unsigned int, std::string>& FileConte
                     ++i;
                 }
                 else {
+                    Write("Tokenizer", "Unrecognized character: '" + oneChar + "' (ASCII: " + std::to_string((int)c) + ") at line " + std::to_string(lineNumber) + ", column " + std::to_string(i + 1), 1, true, true, "");
                     ++i;
                 }
             }

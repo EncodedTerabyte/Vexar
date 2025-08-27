@@ -11,12 +11,16 @@
 int GetPrecedence(const Token& tok) {
    static std::map<std::string, int> prec = {
        {"=", 1}, {":=", 1}, 
-       {"||", 2}, {"or", 2}, {"&&", 3}, {"and", 3},
-       {"==", 4}, {"!=", 4},
-       {"<", 5}, {"<=", 5}, {">", 5}, {">=", 5},
-       {"+", 6}, {"-", 6},
-       {"*", 7}, {"/", 7}, {"%", 7},
-       {"^", 8}
+       {"||", 2}, {"or", 2}, 
+       {"&&", 3}, {"and", 3},
+       {"|", 4},
+       {"^", 5},
+       {"&", 6},
+       {"==", 7}, {"!=", 7},
+       {"<", 8}, {"<=", 8}, {">", 8}, {">=", 8},
+       {"<<", 9}, {">>", 9},
+       {"+", 10}, {"-", 10},
+       {"*", 11}, {"/", 11}, {"%", 11}
    };
    if ((tok.type == TokenType::Operator || tok.type == TokenType::Keyword) && prec.count(tok.value))
        return prec[tok.value];
@@ -24,7 +28,7 @@ int GetPrecedence(const Token& tok) {
 }
 
 bool IsRightAssociative(const Token& tok) {
-   return tok.type == TokenType::Operator && tok.value == "^";
+   return false;
 }
 
 bool IsTypeName(const std::string& name) {
@@ -219,6 +223,22 @@ namespace NumberExpression {
        }
        
        if (tok.type == TokenType::Operator && (tok.value == "-" || tok.value == "+" || tok.value == "!" || tok.value == "~")) {
+           parser.advance();
+           auto node = std::make_unique<UnaryOpNode>();
+           node->type = NodeType::UnaryOp;
+           node->token = tok;
+           node->op = tok.value;
+           node->operand = ParseUnary(parser, stopTokens, hasNumbers, hasStrings);
+           if (!node->operand) {
+               Write("Parser", "Invalid operand for unary operator '" + tok.value +
+                     "' at line " + std::to_string(tok.line) + ", column " +
+                     std::to_string(tok.column), 2, true, true, "");
+               return nullptr;
+           }
+           return node;
+       }
+       
+       if (tok.type == TokenType::Keyword && tok.value == "not") {
            parser.advance();
            auto node = std::make_unique<UnaryOpNode>();
            node->type = NodeType::UnaryOp;

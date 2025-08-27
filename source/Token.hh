@@ -33,12 +33,13 @@ const std::set<std::string> Keywords = {"var", "if", "while", "func", "ret", "tr
 
 const std::set<std::string> Operators = {
     "+", "-", "*", "/", "%",     // arithmetic
-    "&", "&&", "|", "||", "^",   // bitwise & logical
+    "&&", "||",                  // logical
     "~", "!",                    // unary
     "=", "==", "!=", ":=",       // assignment / equality
     "<", "<=", ">", ">=",        // relational
-    "++", "--",                   // increment / decrement
-    "+=", "-=", "*=", "/=" // Compount Operators
+    "++", "--",                  // increment / decrement
+    "+=", "-=", "*=", "/=" ,     // compount operators
+    "<<", ">>", "|", "&", "^"    // bitwise operators
 };
 
 const std::set<char> Delimiters = {

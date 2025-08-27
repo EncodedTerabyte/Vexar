@@ -182,6 +182,29 @@ llvm::Value* GenerateConditionExpression(const std::unique_ptr<ASTNode>& expr, l
         llvm::Type* leftType = left->getType();
         llvm::Type* rightType = right->getType();
 
+        if (binOpNode->op == "&" || binOpNode->op == "|" || binOpNode->op == "^") {
+            if (!leftType->isIntegerTy() || !rightType->isIntegerTy()) {
+                Write("Condition Expression", "Bitwise operators require integer operands" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            if (leftType != rightType) {
+                if (leftType->getIntegerBitWidth() > rightType->getIntegerBitWidth()) {
+                    right = Builder.CreateSExt(right, leftType, "sext");
+                } else if (rightType->getIntegerBitWidth() > leftType->getIntegerBitWidth()) {
+                    left = Builder.CreateSExt(left, rightType, "sext");
+                }
+            }
+            
+            if (binOpNode->op == "&") {
+                return Builder.CreateAnd(left, right, "and");
+            } else if (binOpNode->op == "|") {
+                return Builder.CreateOr(left, right, "or");
+            } else if (binOpNode->op == "^") {
+                return Builder.CreateXor(left, right, "xor");
+            }
+        }
+
         if (leftType->isPointerTy() && rightType->isPointerTy()) {
             llvm::Function* strcmpFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcmp");
             if (!strcmpFunc) {
