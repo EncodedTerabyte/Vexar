@@ -1,0 +1,25 @@
+func clamp(x: int, min: int, max: int): int {
+    if (x < min) {
+        ret min
+    }
+    if (x > max) {
+        ret max
+    }
+    ret x
+}
+
+func floor(x: float): int {
+    var i = (int)x
+    if (x < 0 && x != (float)i) {
+        ret i - 1
+    }
+    ret i
+}
+
+func round(x: float): int {
+    if (x >= 0) {
+        ret (int)(x + 0.5)
+    } else {
+        ret (int)(x - 0.5)
+    }
+}

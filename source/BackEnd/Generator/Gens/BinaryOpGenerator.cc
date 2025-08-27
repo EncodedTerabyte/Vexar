@@ -27,6 +27,45 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         return nullptr;
     }
 
+    auto promoteToCommonType = [&](llvm::Value*& L, llvm::Value*& R) -> llvm::Type* {
+        if (L->getType()->isPointerTy() || R->getType()->isPointerTy()) {
+            return nullptr;
+        }
+        
+        llvm::Type* targetType = nullptr;
+        if (L->getType()->isDoubleTy() || R->getType()->isDoubleTy()) {
+            targetType = llvm::Type::getDoubleTy(Builder.getContext());
+        } else if (L->getType()->isFloatTy() || R->getType()->isFloatTy()) {
+            targetType = llvm::Type::getFloatTy(Builder.getContext());
+        } else if (L->getType()->isIntegerTy() && R->getType()->isIntegerTy()) {
+            return L->getType();
+        } else {
+            return nullptr;
+        }
+        
+        if (L->getType()->isIntegerTy()) {
+            L = Builder.CreateSIToFP(L, targetType);
+        } else if (L->getType() != targetType) {
+            if (L->getType()->isFloatTy() && targetType->isDoubleTy()) {
+                L = Builder.CreateFPExt(L, targetType);
+            } else if (L->getType()->isDoubleTy() && targetType->isFloatTy()) {
+                L = Builder.CreateFPTrunc(L, targetType);
+            }
+        }
+        
+        if (R->getType()->isIntegerTy()) {
+            R = Builder.CreateSIToFP(R, targetType);
+        } else if (R->getType() != targetType) {
+            if (R->getType()->isFloatTy() && targetType->isDoubleTy()) {
+                R = Builder.CreateFPExt(R, targetType);
+            } else if (R->getType()->isDoubleTy() && targetType->isFloatTy()) {
+                R = Builder.CreateFPTrunc(R, targetType);
+            }
+        }
+        
+        return targetType;
+    };
+
     if (BinOpNode->op == "+") {
         if (Left->getType()->isPointerTy() && Right->getType()->isPointerTy()) {
             llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
@@ -149,7 +188,7 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
                 
                 if (Right->getType()->isFloatTy()) {
-                    Right = Builder.CreateFPExt(Right, Builder.getDoubleTy());
+                    Right = Builder.CreateFPExt(Right, llvm::Type::getDoubleTy(Builder.getContext()));
                 }
                 
                 Builder.CreateCall(sprintfFunc, {rightStr, formatPtr, Right});
@@ -205,111 +244,71 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             }
         }
         
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFAdd(Left, Right, "addtmp");
         } else {
             return Builder.CreateAdd(Left, Right, "addtmp");
         }
     } else if (BinOpNode->op == "-") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFSub(Left, Right, "subtmp");
         } else {
             return Builder.CreateSub(Left, Right, "subtmp");
         }
     } else if (BinOpNode->op == "*") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFMul(Left, Right, "multmp");
         } else {
             return Builder.CreateMul(Left, Right, "multmp");
         }
     } else if (BinOpNode->op == "/") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFDiv(Left, Right, "divtmp");
         } else {
             return Builder.CreateSDiv(Left, Right, "divtmp");
         }
     } else if (BinOpNode->op == ">=") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOGE(Left, Right, "fcmp_ge");
         } else {
             return Builder.CreateICmpSGE(Left, Right, "icmp_ge");
         }
     } else if (BinOpNode->op == "<=") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOLE(Left, Right, "fcmp_le");
         } else {
             return Builder.CreateICmpSLE(Left, Right, "icmp_le");
         }
     } else if (BinOpNode->op == ">") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOGT(Left, Right, "fcmp_gt");
         } else {
             return Builder.CreateICmpSGT(Left, Right, "icmp_gt");
         }
     } else if (BinOpNode->op == "<") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOLT(Left, Right, "fcmp_lt");
         } else {
             return Builder.CreateICmpSLT(Left, Right, "icmp_lt");
         }
     } else if (BinOpNode->op == "==") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpOEQ(Left, Right, "fcmp_eq");
         } else {
             return Builder.CreateICmpEQ(Left, Right, "icmp_eq");
         }
     } else if (BinOpNode->op == "!=") {
-        if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
-            if (Left->getType()->isIntegerTy()) {
-                Left = Builder.CreateSIToFP(Left, Right->getType());
-            } else if (Right->getType()->isIntegerTy()) {
-                Right = Builder.CreateSIToFP(Right, Left->getType());
-            }
+        llvm::Type* commonType = promoteToCommonType(Left, Right);
+        if (commonType->isFloatingPointTy()) {
             return Builder.CreateFCmpONE(Left, Right, "fcmp_ne");
         } else {
             return Builder.CreateICmpNE(Left, Right, "icmp_ne");

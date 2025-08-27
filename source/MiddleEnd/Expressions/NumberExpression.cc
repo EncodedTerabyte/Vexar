@@ -10,13 +10,15 @@
 
 int GetPrecedence(const Token& tok) {
    static std::map<std::string, int> prec = {
-       {"=", 1}, {":=", 1}, {"==", 2}, {"!=", 2},
-       {"<", 2}, {"<=", 2}, {">", 2}, {">=", 2},
-       {"+", 3}, {"-", 3},
-       {"*", 4}, {"/", 4}, {"%", 4},
-       {"^", 5}
+       {"=", 1}, {":=", 1}, 
+       {"||", 2}, {"or", 2}, {"&&", 3}, {"and", 3},
+       {"==", 4}, {"!=", 4},
+       {"<", 5}, {"<=", 5}, {">", 5}, {">=", 5},
+       {"+", 6}, {"-", 6},
+       {"*", 7}, {"/", 7}, {"%", 7},
+       {"^", 8}
    };
-   if (tok.type == TokenType::Operator && prec.count(tok.value))
+   if ((tok.type == TokenType::Operator || tok.type == TokenType::Keyword) && prec.count(tok.value))
        return prec[tok.value];
    return -1;
 }
@@ -94,7 +96,7 @@ namespace NumberExpression {
                
                if (parser.peek().type == TokenType::Delimiter && parser.peek().value == ")") {
                    parser.advance();
-                   auto expr = ParseUnary(parser, stopTokens, hasNumbers, hasStrings);
+                   auto expr = ParsePrimary(parser, stopTokens, hasNumbers, hasStrings);
                    if (!expr) {
                        Write("Parser", "Invalid cast expression at line " +
                              std::to_string(nextTok.line) + ", column " +
@@ -116,7 +118,8 @@ namespace NumberExpression {
                    return parenNode;
                }
            } else {
-               auto inner = ParseBinary(parser, 0, stopTokens, hasNumbers, hasStrings);
+               std::set<std::string> innerStop = {")"};
+               auto inner = ParseBinary(parser, 0, innerStop, hasNumbers, hasStrings);
                if (!inner) {
                    Write("Parser", "Invalid parenthesized expression at line " +
                          std::to_string(nextTok.line) + ", column " +
@@ -150,7 +153,7 @@ namespace NumberExpression {
 
        while (true) {
            const Token& tok = parser.peek();
-           if (stopTokens.count(tok.value) || tok.value == ")") break;
+           if (stopTokens.count(tok.value)) break;
            int tokPrec = GetPrecedence(tok);
            if (tokPrec < precedence) break;
 

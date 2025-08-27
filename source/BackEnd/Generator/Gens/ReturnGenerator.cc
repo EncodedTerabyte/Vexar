@@ -2,25 +2,25 @@
 #include "ReturnGenerator.hh"
 
 llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) { 
-    std::string StmtLocation = " at line " + std::to_string(Ret->token.line) + ", column " + std::to_string(Ret->token.column);
-
     if (!Ret) {
-        Write("Block Generator", "Failed to cast to ReturnNode" + StmtLocation, 2, true, true, "");
+        Write("Return Generator", "Null ReturnNode pointer", 2, true, true, "");
         return nullptr;
     }
+    
+    std::string StmtLocation = " at line " + std::to_string(Ret->token.line) + ", column " + std::to_string(Ret->token.column);
     
     llvm::Value* Value = nullptr;
     if (Ret->value) {
         Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
         if (!Value) {
-            Write("Block Generator", "Invalid return expression" + StmtLocation, 2, true, true, "");
+            Write("Return Generator", "Invalid return expression" + StmtLocation, 2, true, true, "");
             return nullptr;
         }
     }
     
     llvm::Function* CurrentFunc = Builder.GetInsertBlock()->getParent();
     if (!CurrentFunc) {
-        Write("Block Generator", "Invalid current function for return statement" + StmtLocation, 2, true, true, "");
+        Write("Return Generator", "Invalid current function for return statement" + StmtLocation, 2, true, true, "");
         return nullptr;
     }
 
@@ -40,16 +40,23 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
                 Value = Builder.CreateFPExt(Value, ReturnType, "fpext");
             }
         } else {
-            Write("Block Generator", "Type mismatch in return statement" + StmtLocation, 2, true, true, "");
-            return nullptr;
+            Write("Return Generator", "Type mismatch in return statement" + StmtLocation, 2, true, true, "");
         }
     }
     
     if (Value) {
-        Builder.CreateRet(Value);
+        llvm::ReturnInst* RetInst = Builder.CreateRet(Value);
+        if (!RetInst) {
+            Write("Return Generator", "Failed to create return instruction" + StmtLocation, 2, true, true, "");
+            return nullptr;
+        }
     } else {
         if (ReturnType->isVoidTy()) {
-            Builder.CreateRetVoid();
+            llvm::ReturnInst* RetInst = Builder.CreateRetVoid();
+            if (!RetInst) {
+                Write("Return Generator", "Failed to create void return instruction" + StmtLocation, 2, true, true, "");
+                return nullptr;
+            }
         } else {
             llvm::Value* defaultValue;
             if (ReturnType->isFloatingPointTy()) {
@@ -57,12 +64,15 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
             } else if (ReturnType->isIntegerTy()) {
                 defaultValue = llvm::ConstantInt::get(ReturnType, 0);
             } else if (ReturnType->isPointerTy()) {
-                defaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
+                defaultValue = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ReturnType));
             } else {
                 defaultValue = llvm::UndefValue::get(ReturnType);
-                Write("Block Generator", "Unsupported return type for default value" + StmtLocation, 1, true, true, "");
             }
-            Builder.CreateRet(defaultValue);
+            llvm::ReturnInst* RetInst = Builder.CreateRet(defaultValue);
+            if (!RetInst) {
+                Write("Return Generator", "Failed to create default return instruction" + StmtLocation, 2, true, true, "");
+                return nullptr;
+            }
         }
     }
 

@@ -30,7 +30,8 @@ public:
     bool Debug = false;
     bool Verbose = false;
     bool RunAfterCompile = false;
-
+    bool EmitWarnings = false;
+    
     bool UsingMenu = false;
     bool HelpMenu = false;
     bool VersionMenu = false;

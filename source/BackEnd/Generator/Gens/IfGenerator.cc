@@ -4,22 +4,24 @@
 
 llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods) {
     if (!Node) {
-        Write("If Generation", "Null IfNode provided at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column), 2, true, true, "");
+        Write("If Generation", "Null IfNode provided", 2, true, true, "");
         return nullptr;
     }
 
+    std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
+
     if (Node->branches.empty()) {
-        Write("If Generation", "Empty branches in IfNode at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column), 2, true, true, "");
+        Write("If Generation", "Empty branches in IfNode" + Location, 2, true, true, "");
         return nullptr;
     }
 
     llvm::Function* currentFunc = Builder.GetInsertBlock()->getParent();
     if (!currentFunc) {
-        Write("If Generation", "Invalid current function at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column), 2, true, true, "");
+        Write("If Generation", "Invalid current function" + Location, 2, true, true, "");
         return nullptr;
     }
     
-    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(Builder.getContext(), "ifcont");
+    llvm::BasicBlock* mergeBB = llvm::BasicBlock::Create(Builder.getContext(), "ifcont", currentFunc);
     
     std::vector<llvm::BasicBlock*> conditionBBs;
     std::vector<llvm::BasicBlock*> bodyBBs;
@@ -40,13 +42,11 @@ llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& Al
 
     for (size_t i = 0; i < Node->branches.size(); ++i) {
         const auto& branch = Node->branches[i];
-        std::string Location = " at line " + std::to_string(branch.condition->token.line) + ", column " + std::to_string(branch.condition->token.column);
         
         Builder.SetInsertPoint(conditionBBs[i]);
         llvm::Value* condValue = GenerateCondition(branch.condition.get(), Builder, AllocaMap, Methods);
         if (!condValue) {
             Write("If Generation", "Invalid condition for branch " + std::to_string(i) + Location, 2, true, true, "");
-            mergeBB->deleteValue();
             return nullptr;
         }
 
@@ -81,7 +81,6 @@ llvm::Value* GenerateIf(IfNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& Al
     }
 
     if (mergeNeeded) {
-        currentFunc->insert(currentFunc->end(), mergeBB);
         Builder.SetInsertPoint(mergeBB);
     } else {
         mergeBB->eraseFromParent();

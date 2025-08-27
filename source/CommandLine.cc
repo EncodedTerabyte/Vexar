@@ -1,6 +1,6 @@
+#include "Miscellaneous/conf/FileAssociations.hh"
 #include "CommandLine.hh"
 
-std::vector<std::string> VexarAssociations = {"vx", "vxr", "vexa", "vexar", "vxx", "va"};
 std::unordered_map<std::string, std::string> target_map = {
     {"asm", "asm"}, {"assembly", "asm"}, {"s", "asm"},
     {"llvm", "llvm"}, {"ir", "llvm"},
@@ -52,6 +52,7 @@ std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
             recognized = true;
         } else if (arg == "-g") { In->Debug = true; recognized = true; }
         else if (arg == "-v") { In->Verbose = true; recognized = true; }
+        else if (arg == "-w") { In->EmitWarnings = true; recognized = true; }
         else if (arg == "--run") { In->RunAfterCompile = true; recognized = true; }
         else if (arg == "--print_tokens") { In->PrintTokens = true; recognized = true; }
         else if (arg == "--print_ast") { In->PrintAST = true; recognized = true; }

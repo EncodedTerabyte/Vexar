@@ -24,7 +24,7 @@ namespace IdentifierExpression {
             callNode->type = NodeType::FunctionCall;
 
             while (parser.peek().value != ")") {
-                auto arg = Main::ParseExpression(parser, 0, {",", ")"});
+                auto arg = Main::ParseExpression(parser, 0, {","});
                 if (!arg) {
                     Write("Parser", "Invalid function call argument for '" + node->name +
                           "' at line " + std::to_string(nextTok.line) + ", column " +
@@ -60,7 +60,7 @@ namespace IdentifierExpression {
             
             while (parser.peek().value == "[") {
                 parser.advance();
-                auto indexExpr = Main::ParseExpression(parser, 0, {"]"});
+                auto indexExpr = Main::ParseExpression(parser, 0, {});
 
                 if (!indexExpr) {
                     Write("Parser", "Invalid array index expression for '" + node->name +
@@ -140,7 +140,7 @@ namespace IdentifierExpression {
                        nextTok.value == "*=" || nextTok.value == "/=" ||
                        nextTok.value == "%=" || nextTok.value == "^=") {
                 Token opTok = parser.advance();
-                std::set<std::string> stopTokens = {";", "\n", ")"};
+                std::set<std::string> stopTokens = {";", "\n"};
                 auto right = NumberExpression::ParseExpression(parser, stopTokens);
                 if (!right) {
                     Write("Parser", "Invalid right-hand side in compound assignment '" +
@@ -159,7 +159,7 @@ namespace IdentifierExpression {
                 return compAssignNode;
             } else if (nextTok.value == "=") {
                 Token opTok = parser.advance();
-                std::set<std::string> stopTokens = {";", "\n", ")"};
+                std::set<std::string> stopTokens = {";", "\n"};
                 auto right = NumberExpression::ParseExpression(parser, stopTokens);
                 if (!right) {
                     Write("Parser", "Invalid right-hand side in assignment for identifier '" + node->name +

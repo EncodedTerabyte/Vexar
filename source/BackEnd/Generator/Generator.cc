@@ -89,7 +89,7 @@ void Generator::PrintLLVM() {
     this->GetModulePtr()->print(llvm::outs(), nullptr);
 }
 
-void Generator::ValidateModule() {
+void Generator::ValidateModule(bool EmitWarnings) {
     llvm::Module* Module = this->GetModulePtr();
     FunctionSymbols& UserFunctions = this->CInstance.FSymbolTable;
     
@@ -122,7 +122,8 @@ void Generator::ValidateModule() {
             for (auto& Instruction : BasicBlock) {
                 
                 if (hasReturn && !unreachableCodeWarned) {
-                    Write("Validator", "Unreachable code detected after return statement in function '" + Function.getName().str() + "'", 1, true, true, "");
+                    if (!EmitWarnings)
+                        Write("Validator", "Unreachable code detected after return statement in function '" + Function.getName().str() + "'", 1, true, true, "");
                     unreachableCodeWarned = true;
                 }
                 
@@ -245,7 +246,8 @@ void Generator::ValidateModule() {
                         llvm::Value* SizeArg = CallInst->getOperand(0);
                         if (auto* ConstInt = llvm::dyn_cast<llvm::ConstantInt>(SizeArg)) {
                             if (ConstInt->getZExtValue() == 0) {
-                                Write("Validator", "Memory allocation requested zero bytes - potential issue with string concatenation or str() function", 1, true, true, "");
+                                if (!EmitWarnings)
+                                    Write("Validator", "Memory allocation requested zero bytes - potential issue with string concatenation or str() function", 1, true, true, "");
                             }
                         }
                     }
@@ -356,20 +358,24 @@ void Generator::ValidateModule() {
                     llvm::Type* DstType = CastInst->getDestTy();
                     
                     if (SrcType->isPointerTy() && DstType->isIntegerTy()) {
-                        Write("Validator", "Potentially unsafe cast from string to number - may cause undefined behavior", 1, true, true, "");
+                        if (!EmitWarnings)
+                            Write("Validator", "Potentially unsafe cast from string to number - may cause undefined behavior", 1, true, true, "");
                     }
                     
                     if (SrcType->isIntegerTy() && DstType->isPointerTy()) {
-                        Write("Validator", "Potentially unsafe cast from number to string pointer - may cause memory corruption", 1, true, true, "");
+                        if (!EmitWarnings)
+                            Write("Validator", "Potentially unsafe cast from number to string pointer - may cause memory corruption", 1, true, true, "");
                     }
                     
                     if (SrcType->isIntegerTy() && DstType->isIntegerTy() && 
                         SrcType->getIntegerBitWidth() > DstType->getIntegerBitWidth()) {
-                        Write("Validator", "Potentially unsafe integer truncation cast - data loss may occur", 1, true, true, "");
+                        if (!EmitWarnings)
+                            Write("Validator", "Potentially unsafe integer truncation cast - data loss may occur", 1, true, true, "");
                     }
                     
                     if (SrcType->isFloatingPointTy() && DstType->isIntegerTy()) {
-                        Write("Validator", "Potentially unsafe cast from float to integer - decimal part will be lost", 1, true, true, "");
+                        if (!EmitWarnings)
+                            Write("Validator", "Potentially unsafe cast from float to integer - decimal part will be lost", 1, true, true, "");
                     }
                 }
                 

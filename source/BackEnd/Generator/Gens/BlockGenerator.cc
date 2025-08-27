@@ -30,7 +30,6 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
         std::string StmtLocation = " at line " + std::to_string(Statement->token.line) + ", column " + std::to_string(Statement->token.column);
 
         if (Builder.GetInsertBlock()->getTerminator()) {
-            Write("Block Generator", "Terminator already present, skipping statement" + StmtLocation, 1, true, true, "");
             break;
         }
         
@@ -40,11 +39,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 Write("Block Generator", "Failed to cast to IfNode" + StmtLocation, 2, true, true, "");
                 continue;
             }
-            llvm::Value* IfResult = GenerateIf(If, Builder, SymbolStack, Methods);
-            if (!IfResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "If statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateIf(If, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::Variable) {
             auto* Var = static_cast<VariableNode*>(Statement.get());
             if (!Var) {
@@ -59,11 +54,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
             
-            llvm::Value* ArrayAssignResult = GenerateArrayAssignment(ArrayAssign, Builder, SymbolStack, Methods);
-            if (!ArrayAssignResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "ArrayAssign statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateArrayAssignment(ArrayAssign, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::Assignment) {
             auto* Assign = static_cast<AssignmentOpNode*>(Statement.get());
             if (!Assign) {
@@ -71,11 +62,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
             
-            llvm::Value* AssignResult = GenerateAssignment(Assign, Builder, SymbolStack, Methods);
-            if (!AssignResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "Assign statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateAssignment(Assign, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::CompoundAssignment) {
             auto* CompAssign = static_cast<CompoundAssignmentOpNode*>(Statement.get());
             if (!CompAssign) {
@@ -83,11 +70,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
             
-            llvm::Value* CompAssignResult = GenerateCompoundAssignment(CompAssign, Builder, SymbolStack, Methods);
-            if (!CompAssignResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "CompoundAssign statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateCompoundAssignment(CompAssign, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::UnaryOp) {
             auto* UnaryOp = static_cast<UnaryOpNode*>(Statement.get());
             if (!UnaryOp) {
@@ -95,11 +78,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
             
-            llvm::Value* UnaryOpResult = GenerateUnaryAssignment(UnaryOp, Builder, SymbolStack, Methods);
-            if (!UnaryOpResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "UnaryOp statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateUnaryAssignment(UnaryOp, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::Return) {
             auto* Ret = static_cast<ReturnNode*>(Statement.get());    
             if (!Ret) {
@@ -107,11 +86,7 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 continue;
             }
 
-            llvm::Value* RetResult = GenerateReturn(Ret, Builder, SymbolStack, Methods);
-            if (!RetResult && Builder.GetInsertBlock()->getTerminator()) {
-                Write("Block Generator", "Return statement generation failed" + StmtLocation, 2, true, true, "");
-                continue;
-            }
+            GenerateReturn(Ret, Builder, SymbolStack, Methods);
         } else if (Statement->type == NodeType::FunctionCall) {
             auto* FuncCall = static_cast<FunctionCallNode*>(Statement.get());
             if (!FuncCall) {

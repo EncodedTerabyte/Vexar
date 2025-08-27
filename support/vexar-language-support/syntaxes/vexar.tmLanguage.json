@@ -50,7 +50,7 @@
         },
         {
           "name": "keyword.declaration.vexar",
-          "match": "\\b(var|func)\\b"
+          "match": "\\b(var|func|import|always_inline|inline)\\b"
         },
         {
           "name": "keyword.other.vexar",
