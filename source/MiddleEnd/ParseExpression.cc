@@ -71,6 +71,14 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
         parser.consume(TokenType::Keyword, tok.value);
         return Node;
     }
+    if (tok.value == ";") {
+        auto Node = std::make_unique<SemiColonNode>();
+        Node->type = NodeType::SemiColon;
+        Node->line = tok.line;
+        Node->column = tok.column;
+        parser.advance();
+        return Node;
+    }
     
     Write("Parser",
           "Unexpected token '" + tok.value + "' at line " +

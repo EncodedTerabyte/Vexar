@@ -122,6 +122,8 @@ void GenerateBlock(const std::unique_ptr<BlockNode>& Node, llvm::IRBuilder<>& Bu
                 Write("Block Generator", "Invalid break statement" + StmtLocation, 2, true, true, "");
                 continue;
             }
+        } else if (Statement->type == NodeType::SemiColon) {
+
         } else {
             Write("Block Generator", "Unsupported statement type: " + std::to_string(Statement->type) + StmtLocation, 2, true, true, "");
         }

@@ -440,4 +440,34 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         Builder.CreateCall(exitFunc, {exitCode});
         return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
     };
+
+    Builtins["bool"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+        if (args.empty()) {
+            Write("Expression Generation", "Empty arguments for bool function", 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (!ArgValue) {
+            Write("Expression Generation", "Invalid argument expression for bool" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Type* ArgType = ArgValue->getType();
+        
+        if (ArgType->isIntegerTy(1)) {
+            return ArgValue;
+        } else if (ArgType->isIntegerTy()) {
+            return Builder.CreateICmpNE(ArgValue, llvm::ConstantInt::get(ArgType, 0));
+        } else if (ArgType->isFloatingPointTy()) {
+            return Builder.CreateFCmpONE(ArgValue, llvm::ConstantFP::get(ArgType, 0.0));
+        } else if (ArgType->isPointerTy()) {
+            return Builder.CreateICmpNE(ArgValue, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ArgType)));
+        } else {
+            Write("Expression Generation", "Unsupported argument type for bool function" + Location, 2, true, true, "");
+            return nullptr;
+        }
+    };
 }

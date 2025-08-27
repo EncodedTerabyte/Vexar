@@ -33,6 +33,7 @@ struct NodeType {
     static constexpr int InlinePreProc = 24;
     static constexpr int CompoundAssignment = 25;
     static constexpr int Break = 26;
+    static constexpr int SemiColon = 27;
 };
 
 struct ASTNode {
@@ -490,5 +491,14 @@ struct BreakNode : ASTNode {
 
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         return branch(prefix, isLast) + "[Break]";
+    }
+};
+
+struct SemiColonNode : ASTNode {
+    int line;
+    int column;
+    
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        return branch(prefix, isLast) + "[Statement End]";
     }
 };

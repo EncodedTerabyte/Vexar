@@ -1,6 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
-#define NOMINMAX
-
 #include "Miscellaneous/LoggerHandler/LoggerFile.hh"
 #include "Miscellaneous/LoggerHandler/ColorPrint.hh"
 

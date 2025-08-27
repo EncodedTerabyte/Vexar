@@ -1,4 +1,3 @@
-
 #include "VariableGenerator.hh"
 #include "ExpressionGenerator.hh"
 #include <iostream>
@@ -28,7 +27,7 @@ llvm::Type* DeduceArrayElementType(ArrayNode* arrayLiteral, llvm::IRBuilder<>& B
         }
         return Builder.getDoubleTy();
     } else if (firstValue->getType()->isPointerTy()) {
-        return Builder.getPtrTy();
+        return llvm::PointerType::get(Builder.getContext(), 0);
     }
     
     return nullptr;
@@ -137,7 +136,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
 
     llvm::Type* BaseType = nullptr;
     
-    if (Type == "auto") {
+    if (Type == "auto" || Type.empty()) {
         if (!Node->value) {
             Write("Variable Generation", "Auto variable requires initialization: " + Name + Location, 2, true, true, "");
             return;
@@ -163,7 +162,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             }
             
             if (tempValue->getType()->isPointerTy()) {
-                BaseType = Builder.getPtrTy();
+                BaseType = llvm::PointerType::get(Builder.getContext(), 0);
             } else if (tempValue->getType()->isIntegerTy()) {
                 BaseType = Builder.getInt32Ty();
             } else if (tempValue->getType()->isFloatingPointTy()) {
@@ -182,13 +181,20 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
                 return;
             }
         }
-    } else if (Type == "string") {
-        BaseType = Builder.getPtrTy();
     } else {
-        BaseType = GetLLVMTypeFromString(Type, Builder.getContext());
-        if (!BaseType) {
-            Write("Variable Generation", "Invalid type specified for variable: " + Name + Location, 2, true, true, "");
+        if (!Node->value && (Type.empty() || Type == "auto")) {
+            Write("Variable Generation", "Uninitialized variable requires explicit type: " + Name + Location, 2, true, true, "");
             return;
+        }
+        
+        if (Type == "string") {
+            BaseType = llvm::PointerType::get(Builder.getContext(), 0);
+        } else {
+            BaseType = GetLLVMTypeFromString(Type, Builder.getContext());
+            if (!BaseType) {
+                Write("Variable Generation", "Invalid type specified for variable: " + Name + Location, 2, true, true, "");
+                return;
+            }
         }
     }
 
