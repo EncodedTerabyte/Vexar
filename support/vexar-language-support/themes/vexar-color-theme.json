@@ -1,0 +1,66 @@
+{
+  "name": "Vexar Theme",
+  "type": "dark",
+  "colors": {
+    "editor.foreground": "#ffffff"
+  },
+  "tokenColors": [
+    {
+      "name": "Vexar Keywords",
+      "scope": "keyword.control.vexar",
+      "settings": {
+        "foreground": "#569CD6"
+      }
+    },
+    {
+      "name": "Vexar Types",
+      "scope": "storage.type.vexar",
+      "settings": {
+        "foreground": "#7bc2b4"
+      }
+    },
+    {
+      "name": "Vexar Builtin Functions",
+      "scope": "support.function.builtin.vexar",
+      "settings": {
+        "foreground": "#569CD6"
+      }
+    },
+    {
+      "name": "Vexar Function Calls",
+      "scope": "entity.name.function.vexar",
+      "settings": {
+        "foreground": "#DCDCAA"
+      }
+    },
+    {
+      "name": "Vexar Strings",
+      "scope": "string.quoted.double.vexar",
+      "settings": {
+        "foreground": "#CE9178"
+      }
+    },
+    {
+      "name": "Vexar Numbers",
+      "scope": "constant.numeric.vexar",
+      "settings": {
+        "foreground": "#B5CEA8"
+      }
+    },
+    {
+      "name": "Vexar Comments",
+      "scope": "comment.line.double-slash.vexar, comment.block.vexar",
+      "settings": {
+        "foreground": "#6A9955",
+        "fontStyle": "italic"
+      }
+    },
+    {
+      "name": "Vexar Operators",
+      "scope": "keyword.operator.vexar",
+      "settings": {
+        "foreground": "#D4D4D4"
+      }
+    }
+  ]
+}

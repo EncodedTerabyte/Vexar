@@ -1,0 +1,40 @@
+{
+  "name": "vexar-language-support",
+  "displayName": "Vexar Language Support",
+  "description": "Language support for Vexar programming language",
+  "version": "0.0.1",
+  "publisher": "vexar-team",
+  "engines": {
+    "vscode": "^1.103.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "vexar",
+        "aliases": [
+          "Vexar",
+          "vexar"
+        ],
+        "extensions": [
+          ".vx",
+          ".vxr",
+          ".vexa",
+          ".vexar",
+          ".vxx",
+          ".va"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "vexar",
+        "scopeName": "source.vexar",
+        "path": "./syntaxes/vexar.tmLanguage.json"
+      }
+    ]
+  }
+}
