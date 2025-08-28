@@ -36,7 +36,7 @@ namespace StringExpression {
         }
         else if (tok.type == TokenType::Delimiter && tok.value == "(") {
             parser.advance();
-            auto inner = Parse(parser, 0, {")"});
+            auto inner = NumberExpression::Parse(parser, 0, {")"});
             if (parser.peek().type != TokenType::Delimiter || parser.peek().value != ")") {
                 Write("Parser", "Expected ')' at line " +
                       std::to_string(parser.peek().line) + ", column " +

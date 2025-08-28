@@ -3,38 +3,27 @@
 #include <iostream>
 #include <cmath>
 
-llvm::Type* DeduceArrayElementType(ArrayNode* arrayLiteral, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods) {
+
+
+std::unique_ptr<ASTNode> WrapASTNode(ASTNode* node) {
+    return std::unique_ptr<ASTNode>(node);
+}
+
+llvm::Type* InferArrayTypeFromLiteral(ArrayNode* arrayLiteral, llvm::Type* baseType, llvm::IRBuilder<>& Builder) {
     if (!arrayLiteral || arrayLiteral->elements.empty()) {
         return nullptr;
     }
     
-    ASTNode* firstElement = arrayLiteral->elements[0].get();
-    if (firstElement->type == NodeType::Array) {
-        return DeduceArrayElementType(static_cast<ArrayNode*>(firstElement), Builder, AllocaMap, Methods);
+    uint64_t size = arrayLiteral->elements.size();
+    
+    if (arrayLiteral->elements[0]->type == NodeType::Array) {
+        ArrayNode* subArray = static_cast<ArrayNode*>(arrayLiteral->elements[0].get());
+        llvm::Type* subType = InferArrayTypeFromLiteral(subArray, baseType, Builder);
+        if (!subType) return nullptr;
+        return llvm::ArrayType::get(subType, size);
+    } else {
+        return llvm::ArrayType::get(baseType, size);
     }
-    
-    llvm::Value* firstValue = GenerateExpression(arrayLiteral->elements[0], Builder, AllocaMap, Methods);
-    if (!firstValue) return nullptr;
-    
-    if (firstValue->getType()->isIntegerTy()) {
-        return Builder.getInt32Ty();
-    } else if (firstValue->getType()->isFloatingPointTy()) {
-        if (llvm::ConstantFP* constFP = llvm::dyn_cast<llvm::ConstantFP>(firstValue)) {
-            double val = constFP->getValueAPF().convertToDouble();
-            if (val == floor(val)) {
-                return Builder.getInt32Ty();
-            }
-        }
-        return Builder.getDoubleTy();
-    } else if (firstValue->getType()->isPointerTy()) {
-        return llvm::PointerType::get(Builder.getContext(), 0);
-    }
-    
-    return nullptr;
-}
-
-std::unique_ptr<ASTNode> WrapASTNode(ASTNode* node) {
-    return std::unique_ptr<ASTNode>(node);
 }
 
 llvm::Type* GetArrayTypeFromDimensions(ASTNode* dimensionNode, llvm::Type* baseType, llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods) {
@@ -54,7 +43,7 @@ llvm::Type* GetArrayTypeFromDimensions(ASTNode* dimensionNode, llvm::Type* baseT
                 uint64_t size = constDim->getZExtValue();
                 currentType = llvm::ArrayType::get(currentType, size);
             } else {
-                return llvm::PointerType::get(baseType, 0);
+                return nullptr;
             }
         }
         return currentType;
@@ -72,7 +61,7 @@ llvm::Type* GetArrayTypeFromDimensions(ASTNode* dimensionNode, llvm::Type* baseT
             uint64_t size = constDim->getZExtValue();
             return llvm::ArrayType::get(baseType, size);
         } else {
-            return llvm::PointerType::get(baseType, 0);
+            return nullptr;
         }
     }
 }
@@ -81,8 +70,22 @@ void InitializeArrayFromLiteral(llvm::AllocaInst* arrayAlloca, ArrayNode* arrayL
                                llvm::IRBuilder<>& Builder, ScopeStack& AllocaMap, FunctionSymbols& Methods,
                                std::vector<llvm::Value*>& indices) {
     
+    if (!arrayLiteral) {
+        Write("Variable Generation", "Null array literal in initialization", 2, true, true, "");
+        return;
+    }
+    
     for (size_t i = 0; i < arrayLiteral->elements.size(); i++) {
+        if (!arrayLiteral->elements[i]) {
+            Write("Variable Generation", "Null element at index " + std::to_string(i), 2, true, true, "");
+            continue;
+        }
+        
         ASTNode* element = arrayLiteral->elements[i].get();
+        if (!element) {
+            Write("Variable Generation", "Null element pointer at index " + std::to_string(i), 2, true, true, "");
+            continue;
+        }
         
         if (element->type == NodeType::Array) {
             ArrayNode* subArray = static_cast<ArrayNode*>(element);
@@ -90,8 +93,14 @@ void InitializeArrayFromLiteral(llvm::AllocaInst* arrayAlloca, ArrayNode* arrayL
             newIndices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), i));
             InitializeArrayFromLiteral(arrayAlloca, subArray, elementType, Builder, AllocaMap, Methods, newIndices);
         } else {
-            llvm::Value* elementValue = GenerateExpression(arrayLiteral->elements[i], Builder, AllocaMap, Methods);
-            if (!elementValue) continue;
+            llvm::Value* elementValue = nullptr;
+            if (element->type == NodeType::Number) {
+                auto* numNode = static_cast<NumberNode*>(element);
+                elementValue = llvm::ConstantInt::get(elementType, static_cast<int>(numNode->value));
+            } else {
+                elementValue = GenerateExpression(arrayLiteral->elements[i], Builder, AllocaMap, Methods);
+                if (!elementValue) continue;
+            }
             
             if (elementValue->getType() != elementType) {
                 if (elementType->isIntegerTy(32) && elementValue->getType()->isFloatingPointTy()) {
@@ -135,6 +144,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
     std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
 
     llvm::Type* BaseType = nullptr;
+    bool isArrayFromLiteral = false;
     
     if (Type == "auto" || Type.empty()) {
         if (!Node->value) {
@@ -142,18 +152,9 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             return;
         }
         
-        if (Node->arrayExpression) {
-            if (Node->value->type == NodeType::Array) {
-                ArrayNode* arrayLiteral = static_cast<ArrayNode*>(Node->value.get());
-                BaseType = DeduceArrayElementType(arrayLiteral, Builder, AllocaMap, Methods);
-                if (!BaseType) {
-                    Write("Variable Generation", "Cannot deduce element type for auto array: " + Name + Location, 2, true, true, "");
-                    return;
-                }
-            } else {
-                Write("Variable Generation", "Auto array variable requires array literal: " + Name + Location, 2, true, true, "");
-                return;
-            }
+        if (Node->value->type == NodeType::Array) {
+            BaseType = Builder.getInt32Ty();
+            isArrayFromLiteral = true;
         } else {
             llvm::Value* tempValue = GenerateExpression(Node->value, Builder, AllocaMap, Methods);
             if (!tempValue) {
@@ -163,6 +164,8 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             
             if (tempValue->getType()->isPointerTy()) {
                 BaseType = llvm::PointerType::get(Builder.getContext(), 0);
+            } else if (tempValue->getType()->isIntegerTy(8)) {
+                BaseType = Builder.getInt8Ty();
             } else if (tempValue->getType()->isIntegerTy()) {
                 BaseType = Builder.getInt32Ty();
             } else if (tempValue->getType()->isFloatingPointTy()) {
@@ -182,19 +185,26 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             }
         }
     } else {
-        if (!Node->value && (Type.empty() || Type == "auto")) {
-            Write("Variable Generation", "Uninitialized variable requires explicit type: " + Name + Location, 2, true, true, "");
-            return;
+        std::string baseTypeName = Type;
+        size_t pos = baseTypeName.find('[');
+        if (pos != std::string::npos) {
+            baseTypeName = baseTypeName.substr(0, pos);
         }
         
-        if (Type == "string") {
+        if (baseTypeName == "string") {
             BaseType = llvm::PointerType::get(Builder.getContext(), 0);
+        } else if (baseTypeName == "bool") {
+            BaseType = Builder.getInt1Ty();
         } else {
-            BaseType = GetLLVMTypeFromString(Type, Builder.getContext());
+            BaseType = GetLLVMTypeFromString(baseTypeName, Builder.getContext());
             if (!BaseType) {
                 Write("Variable Generation", "Invalid type specified for variable: " + Name + Location, 2, true, true, "");
                 return;
             }
+        }
+        
+        if (Node->value && Node->value->type == NodeType::Array && !Node->arrayExpression) {
+            isArrayFromLiteral = true;
         }
     }
 
@@ -206,6 +216,13 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             Write("Variable Generation", "Invalid array dimensions for variable: " + Name + Location, 2, true, true, "");
             return;
         }
+    } else if (isArrayFromLiteral) {
+        ArrayNode* arrayLiteral = static_cast<ArrayNode*>(Node->value.get());
+        FinalType = InferArrayTypeFromLiteral(arrayLiteral, BaseType, Builder);
+        if (!FinalType) {
+            Write("Variable Generation", "Failed to infer array type from literal: " + Name + Location, 2, true, true, "");
+            return;
+        }
     }
 
     llvm::AllocaInst* AllocaInst = Builder.CreateAlloca(FinalType, nullptr, Name);
@@ -215,7 +232,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
     }
 
     if (Node->value) {
-        if (Node->arrayExpression) {
+        if (isArrayFromLiteral || Node->arrayExpression) {
             if (Node->value->type == NodeType::Array) {
                 ArrayNode* arrayLiteral = static_cast<ArrayNode*>(Node->value.get());
                 std::vector<llvm::Value*> indices;
@@ -232,8 +249,16 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             }
 
             if (Value->getType() != BaseType) {
-                if (BaseType->isIntegerTy(32) && Value->getType()->isFloatingPointTy()) {
+                if (BaseType->isIntegerTy(8) && Value->getType()->isIntegerTy()) {
+                    Value = Builder.CreateTrunc(Value, BaseType);
+                } else if (BaseType->isIntegerTy(32) && Value->getType()->isIntegerTy(8)) {
+                    Value = Builder.CreateZExt(Value, BaseType);
+                } else if (BaseType->isIntegerTy(32) && Value->getType()->isFloatingPointTy()) {
                     Value = Builder.CreateFPToSI(Value, BaseType);
+                } else if (BaseType->isIntegerTy(1) && Value->getType()->isIntegerTy()) {
+                    Value = Builder.CreateTrunc(Value, BaseType);
+                } else if (BaseType->isIntegerTy() && Value->getType()->isIntegerTy(1)) {
+                    Value = Builder.CreateZExt(Value, BaseType);
                 } else if (BaseType->isFloatTy()) {
                     if (Value->getType()->isIntegerTy()) {
                         Value = Builder.CreateSIToFP(Value, BaseType);

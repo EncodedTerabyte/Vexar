@@ -84,10 +84,12 @@ llvm::Function* GenerateFunction(FunctionNode* Node, llvm::Module* Module, Alloc
             Builder.CreateRetVoid();
         } else {
             llvm::Value* DefaultValue;
-            if (ReturnType->isFloatingPointTy()) {
-                DefaultValue = llvm::ConstantFP::get(ReturnType, 0.0);
+            if (ReturnType->isIntegerTy(1)) {
+                DefaultValue = llvm::ConstantInt::get(ReturnType, false);
             } else if (ReturnType->isIntegerTy()) {
                 DefaultValue = llvm::ConstantInt::get(ReturnType, 0);
+            } else if (ReturnType->isFloatingPointTy()) {
+                DefaultValue = llvm::ConstantFP::get(ReturnType, 0.0);
             } else if (ReturnType->isPointerTy()) {
                 DefaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
             } else {

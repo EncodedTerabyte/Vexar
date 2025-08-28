@@ -3,7 +3,7 @@
 
 void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
     if (!Builtins.empty()) return;
-    
+
     Builtins["print"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for print function", 2, true, true, "");
@@ -54,10 +54,17 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(1)) {
             llvm::Value* boolAsInt = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d", "bool_fmt");
+            llvm::Value* zero = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+            llvm::Value* isZero = Builder.CreateICmpEQ(boolAsInt, zero);
+            
+            llvm::Value* trueStr = Builder.CreateGlobalString("true", "true_str");
+            llvm::Value* falseStr = Builder.CreateGlobalString("false", "false_str");
+            llvm::Value* selectedStr = Builder.CreateSelect(isZero, falseStr, trueStr);
+            
+            llvm::Value* formatStr = Builder.CreateGlobalString("%s", "bool_fmt");
             llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
             printfArgs.push_back(formatPtr);
-            printfArgs.push_back(boolAsInt);
+            printfArgs.push_back(selectedStr);
         } else {
             Write("Expression Generation", "Unsupported argument type for print" + Location, 2, true, true, "");
             return nullptr;
@@ -117,10 +124,17 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(1)) {
             llvm::Value* boolAsInt = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d\n", "bool_fmt");
+            llvm::Value* zero = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+            llvm::Value* isZero = Builder.CreateICmpEQ(boolAsInt, zero);
+            
+            llvm::Value* trueStr = Builder.CreateGlobalString("true\n", "true_str_ln");
+            llvm::Value* falseStr = Builder.CreateGlobalString("false\n", "false_str_ln");
+            llvm::Value* selectedStr = Builder.CreateSelect(isZero, falseStr, trueStr);
+            
+            llvm::Value* formatStr = Builder.CreateGlobalString("%s", "bool_fmt_ln");
             llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
             printfArgs.push_back(formatPtr);
-            printfArgs.push_back(boolAsInt);
+            printfArgs.push_back(selectedStr);
         } else {
             Write("Expression Generation", "Unsupported argument type for println" + Location, 2, true, true, "");
             return nullptr;
@@ -251,10 +265,9 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
             Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, ArgValue});
         } else if (ArgType->isIntegerTy(8)) {
-            llvm::Value* extendedValue = Builder.CreateSExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d", "char_to_str_fmt");
+            llvm::Value* formatStr = Builder.CreateGlobalString("%c", "char_to_str_fmt");
             llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, extendedValue});
+            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, ArgValue});
         } else if (ArgType->isIntegerTy(1)) {
             llvm::Value* extendedValue = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
             llvm::Value* formatStr = Builder.CreateGlobalString("%d", "bool_to_str_fmt");
@@ -366,8 +379,158 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
+        
+        if (args[0]->type == NodeType::ArrayAccess) {
+            auto* AccessNodePtr = static_cast<ArrayAccessNode*>(args[0].get());
+            if (!AccessNodePtr) {
+                Write("Expression Generation", "Failed to cast to ArrayAccessNode" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Value* arrayPtr = nullptr;
+            for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+                auto found = it->find(AccessNodePtr->identifier);
+                if (found != it->end()) {
+                    arrayPtr = found->second;
+                    break;
+                }
+            }
+            
+            if (!arrayPtr) {
+                Write("Expression Generation", "Undefined array identifier: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(arrayPtr);
+            if (!allocaInst) {
+                Write("Expression Generation", "Array identifier is not an allocated variable: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Type* allocatedType = allocaInst->getAllocatedType();
+            
+            if (AccessNodePtr->expr->type == NodeType::Array) {
+                auto* IndexArrayPtr = static_cast<ArrayNode*>(AccessNodePtr->expr.get());
+                
+                llvm::Type* currentType = allocatedType;
+                for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
+                    if (!currentType->isArrayTy()) {
+                        Write("Expression Generation", "Too many dimensions in array access for len: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                    
+                    llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(currentType);
+                    if (!arrayType) {
+                        Write("Expression Generation", "Expected array type in len" + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                    
+                    currentType = arrayType->getElementType();
+                }
+                
+                if (currentType->isArrayTy()) {
+                    llvm::ArrayType* finalArrayType = llvm::dyn_cast<llvm::ArrayType>(currentType);
+                    if (!finalArrayType) {
+                        Write("Expression Generation", "Expected final array type in len" + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                    
+                    uint64_t arraySize = finalArrayType->getNumElements();
+                    return llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+                } else {
+                    Write("Expression Generation", "Result of array access is not an array for len function" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+            } else {
+                if (!allocatedType->isArrayTy()) {
+                    Write("Expression Generation", "Variable is not an array for len: " + AccessNodePtr->identifier + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+                if (!arrayType) {
+                    Write("Expression Generation", "Expected array type for len" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                llvm::Type* elementType = arrayType->getElementType();
+                if (elementType->isArrayTy()) {
+                    llvm::ArrayType* subArrayType = llvm::dyn_cast<llvm::ArrayType>(elementType);
+                    if (!subArrayType) {
+                        Write("Expression Generation", "Expected sub-array type for len" + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                    
+                    uint64_t arraySize = subArrayType->getNumElements();
+                    return llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+                } else {
+                    Write("Expression Generation", "Array element is not an array for len function" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+            }
+        }
+        
+        if (args[0]->type == NodeType::Identifier) {
+            auto* IdentifierNodePtr = static_cast<IdentifierNode*>(args[0].get());
+            if (!IdentifierNodePtr) {
+                Write("Expression Generation", "Failed to cast to IdentifierNode" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Value* varPtr = nullptr;
+            for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
+                auto found = it->find(IdentifierNodePtr->name);
+                if (found != it->end()) {
+                    varPtr = found->second;
+                    break;
+                }
+            }
+            
+            if (!varPtr) {
+                Write("Expression Generation", "Undefined identifier: " + IdentifierNodePtr->name + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(varPtr);
+            if (!allocaInst) {
+                Write("Expression Generation", "Identifier is not an allocated variable: " + IdentifierNodePtr->name + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Type* allocatedType = allocaInst->getAllocatedType();
+            
+            if (allocatedType->isPointerTy()) {
+                llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
+                llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
+                if (!strlenFunc) {
+                    llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                        llvm::Type::getInt64Ty(Builder.getContext()),
+                        {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                        false
+                    );
+                    strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
+                }
+                llvm::Value* length = Builder.CreateCall(strlenFunc, {loadedPtr});
+                return Builder.CreateTrunc(length, Builder.getInt32Ty());
+            }
+            
+            if (allocatedType->isArrayTy()) {
+                llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+                if (!arrayType) {
+                    Write("Expression Generation", "Expected array type" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                uint64_t arraySize = arrayType->getNumElements();
+                return llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+            }
+            
+            Write("Expression Generation", "Unsupported type for len function: " + IdentifierNodePtr->name + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
         
         if (!ArgValue) {
             Write("Expression Generation", "Invalid argument expression for len" + Location, 2, true, true, "");

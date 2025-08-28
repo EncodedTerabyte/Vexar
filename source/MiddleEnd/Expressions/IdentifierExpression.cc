@@ -24,7 +24,15 @@ namespace IdentifierExpression {
             callNode->type = NodeType::FunctionCall;
 
             while (parser.peek().value != ")") {
-                auto arg = Main::ParseExpression(parser, 0, {","});
+                std::unique_ptr<ASTNode> arg;
+                const Token& argTok = parser.peek();
+                
+                if (argTok.type == TokenType::String) {
+                    arg = NumberExpression::ParseExpression(parser, {","});
+                } else {
+                    arg = Main::ParseExpression(parser, 0, {","});
+                }
+                
                 if (!arg) {
                     Write("Parser", "Invalid function call argument for '" + node->name +
                           "' at line " + std::to_string(nextTok.line) + ", column " +

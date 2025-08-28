@@ -23,18 +23,24 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
         auto Node = std::make_unique<BreakNode>();
         Node->token = tok;
         parser.advance();
-        std::cout << "breaking break token" << std::endl; 
         return Node; 
+    }
+
+    if (tok.type == TokenType::Identifier) {
+        return IdentifierExpression::Parse(parser);
     }
 
     if (tok.type == TokenType::Number ||
         tok.type == TokenType::Float ||
-        tok.type == TokenType::Identifier ||
         tok.type == TokenType::String ||
         tok.type == TokenType::Character ||
         (tok.type == TokenType::Delimiter && tok.value == "(") ||
         (tok.type == TokenType::Operator && 
          (tok.value == "-" || tok.value == "+" || tok.value == "!" || tok.value == "~"))) {
+        return NumberExpression::Parse(parser, precedence, stopTokens);
+    }
+
+    if ((tok.value == "true" || tok.value == "false")) {
         return NumberExpression::Parse(parser, precedence, stopTokens);
     }
 

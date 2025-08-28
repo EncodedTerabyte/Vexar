@@ -5,100 +5,11 @@ llvm::Value* GenerateArrayExpression(const std::unique_ptr<ASTNode>& Expr, llvm:
     std::string Location = " at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column);
     
     if (Expr->type == NodeType::Array) {
-        auto* ArrayNodePtr = static_cast<ArrayNode*>(Expr.get());
-        if (!ArrayNodePtr) {
-            Write("Expression Generation", "Failed to cast to ArrayNode" + Location, 2, true, true, "");
-            return nullptr;
-        }
-        
-        if (ArrayNodePtr->elements.empty()) {
-            Write("Expression Generation", "Empty array literal" + Location, 2, true, true, "");
-            return nullptr;
-        }
-        
-        llvm::Type* ElementType = nullptr;
-        if (!ArrayNodePtr->expectedType.empty() && ArrayNodePtr->expectedType != "auto") {
-            ElementType = GetLLVMTypeFromString(ArrayNodePtr->expectedType, Builder.getContext());
-            if (!ElementType) {
-                Write("Expression Generation", "Invalid expected type: " + ArrayNodePtr->expectedType + Location, 2, true, true, "");
-                return nullptr;
-            }
-        } else {
-            llvm::Value* firstValue = GenerateExpression(ArrayNodePtr->elements[0], Builder, SymbolStack, Methods);
-            if (!firstValue) {
-                Write("Expression Generation", "Cannot deduce array element type" + Location, 2, true, true, "");
-                return nullptr;
-            }
-            ElementType = firstValue->getType();
-            
-            if (ElementType->isFloatingPointTy()) {
-                if (llvm::ConstantFP* constFP = llvm::dyn_cast<llvm::ConstantFP>(firstValue)) {
-                    double val = constFP->getValueAPF().convertToDouble();
-                    if (val == floor(val)) {
-                        ElementType = Builder.getInt32Ty();
-                    } else {
-                        ElementType = Builder.getDoubleTy();
-                    }
-                } else {
-                    ElementType = Builder.getDoubleTy();
-                }
-            } else if (ElementType->isIntegerTy()) {
-                ElementType = Builder.getInt32Ty();
-            } else if (ElementType->isPointerTy()) {
-                ElementType = llvm::PointerType::get(Builder.getInt8Ty(), 0);
-            }
-        }
-        
-        llvm::Module* module = Builder.GetInsertBlock()->getParent()->getParent();
-        llvm::Function* mallocFunc = Malloc(module);
-        
-        uint64_t arraySize = ArrayNodePtr->elements.size();
-        uint64_t elementSize = module->getDataLayout().getTypeAllocSize(ElementType);
-        uint64_t totalSize = arraySize * elementSize;
-        
-        llvm::Value* sizeValue = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), totalSize);
-        llvm::Value* rawPtr = Builder.CreateCall(mallocFunc, {sizeValue});
-        
-        if (!rawPtr) {
-            Write("Expression Generation", "Failed to allocate memory for array" + Location, 2, true, true, "");
-            return nullptr;
-        }
-        
-        llvm::Type* typedPtrType = llvm::PointerType::get(ElementType, 0);
-        llvm::Value* typedArrayPtr = Builder.CreatePointerCast(rawPtr, typedPtrType);
-        
-        for (size_t i = 0; i < ArrayNodePtr->elements.size(); ++i) {
-            llvm::Value* elementValue = GenerateExpression(ArrayNodePtr->elements[i], Builder, SymbolStack, Methods);
-            if (!elementValue) {
-                Write("Expression Generation", "Failed to generate array element at index " + std::to_string(i) + Location, 2, true, true, "");
-                continue;
-            }
-            
-            if (elementValue->getType() != ElementType) {
-                if (ElementType->isIntegerTy(32) && elementValue->getType()->isFloatingPointTy()) {
-                    elementValue = Builder.CreateFPToSI(elementValue, ElementType);
-                } else if (ElementType->isFloatTy()) {
-                    if (elementValue->getType()->isIntegerTy()) {
-                        elementValue = Builder.CreateSIToFP(elementValue, ElementType);
-                    } else if (elementValue->getType()->isDoubleTy()) {
-                        elementValue = Builder.CreateFPTrunc(elementValue, ElementType);
-                    }
-                } else if (ElementType->isDoubleTy()) {
-                    if (elementValue->getType()->isIntegerTy()) {
-                        elementValue = Builder.CreateSIToFP(elementValue, ElementType);
-                    } else if (elementValue->getType()->isFloatTy()) {
-                        elementValue = Builder.CreateFPExt(elementValue, ElementType);
-                    }
-                }
-            }
-            
-            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(ElementType, typedArrayPtr, 
-                llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), i));
-            Builder.CreateStore(elementValue, elementPtr);
-        }
-        
-        return typedArrayPtr;
-    } else if (Expr->type == NodeType::ArrayAccess) {
+        Write("Expression Generation", "Array literals should be handled in variable declarations, not expressions" + Location, 2, true, true, "");
+        return nullptr;
+    } 
+    
+    if (Expr->type == NodeType::ArrayAccess) {
         auto* AccessNodePtr = static_cast<ArrayAccessNode*>(Expr.get());
         if (!AccessNodePtr) {
             Write("Expression Generation", "Failed to cast to ArrayAccessNode" + Location, 2, true, true, "");

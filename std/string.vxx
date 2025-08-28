@@ -1,0 +1,99 @@
+func toUpper(str: string): string {
+    var chars_lower: char[] = {
+        'a', 'b', 'c', 
+        'd', 'e', 'f', 
+        'g', 'h', 'i', 
+        'j', 'k', 'l', 
+        'm', 'n', 'o',
+        'p', 'q', 'r', 
+        's', 't', 'u',
+        'v', 'w', 'x',
+        'y', 'z'
+    };
+
+    var chars_upper: char[] = {
+        'A', 'B', 'C', 
+        'D', 'E', 'F', 
+        'G', 'H', 'I', 
+        'J', 'K', 'L', 
+        'M', 'N', 'O',
+        'P', 'Q', 'R', 
+        'S', 'T', 'U',
+        'V', 'W', 'X',
+        'Y', 'Z'
+    };
+
+    var max: int = len(str);
+    var i = 0;
+    var result: string = "";
+
+    while (i < max) {
+        var c = str[i];
+        var j = 0;
+        var replaced = false;
+        while (j < len(chars_lower)) {
+            if (c == chars_lower[j]) {
+                result = result + str(chars_upper[j]);
+                replaced = true;
+                break;
+            }
+            j++;
+        }
+        if (!replaced) {
+            result = result + str(c);
+        }
+        i++;
+    } 
+
+    ret str(result);
+}
+
+func toLower(str: string): string {
+    var chars_lower: char[] = {
+        'a', 'b', 'c', 
+        'd', 'e', 'f', 
+        'g', 'h', 'i', 
+        'j', 'k', 'l', 
+        'm', 'n', 'o',
+        'p', 'q', 'r', 
+        's', 't', 'u',
+        'v', 'w', 'x',
+        'y', 'z'
+    };
+    
+    var chars_upper: char[] = {
+        'A', 'B', 'C', 
+        'D', 'E', 'F', 
+        'G', 'H', 'I', 
+        'J', 'K', 'L', 
+        'M', 'N', 'O',
+        'P', 'Q', 'R', 
+        'S', 'T', 'U',
+        'V', 'W', 'X',
+        'Y', 'Z'
+    };
+
+    var max: int = len(str);
+    var i = 0;
+    var result: string = "";
+
+    while (i < max) {
+        var c = str[i];
+        var j = 0;
+        var replaced = false;
+        while (j < len(chars_upper)) {
+            if (c == chars_upper[j]) {
+                result = result + str(chars_lower[j]);
+                replaced = true;
+                break;
+            }
+            j++;
+        }
+        if (!replaced) {
+            result = result + str(c);
+        }
+        i++;
+    } 
+
+    ret str(result);
+}

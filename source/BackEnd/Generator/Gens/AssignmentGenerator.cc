@@ -52,6 +52,10 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             if (rvalue->getType() != elementType) {
                 if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
                     rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                } else if (elementType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
+                    rvalue = Builder.CreateTrunc(rvalue, elementType);
+                } else if (elementType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
+                    rvalue = Builder.CreateZExt(rvalue, elementType);
                 } else if (elementType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
                         rvalue = Builder.CreateSIToFP(rvalue, elementType);
@@ -115,6 +119,10 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             if (rvalue->getType() != currentType) {
                 if (currentType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
                     rvalue = Builder.CreateFPToSI(rvalue, currentType);
+                } else if (currentType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
+                    rvalue = Builder.CreateTrunc(rvalue, currentType);
+                } else if (currentType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
+                    rvalue = Builder.CreateZExt(rvalue, currentType);
                 } else if (currentType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
                         rvalue = Builder.CreateSIToFP(rvalue, currentType);
@@ -167,6 +175,10 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             if (rvalue->getType() != elementType) {
                 if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
                     rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                } else if (elementType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
+                    rvalue = Builder.CreateTrunc(rvalue, elementType);
+                } else if (elementType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
+                    rvalue = Builder.CreateZExt(rvalue, elementType);
                 } else if (elementType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
                         rvalue = Builder.CreateSIToFP(rvalue, elementType);
@@ -221,6 +233,10 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
         if (rvalue->getType() != varType) {
             if (varType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
                 rvalue = Builder.CreateFPToSI(rvalue, varType);
+            } else if (varType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
+                rvalue = Builder.CreateTrunc(rvalue, varType);
+            } else if (varType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
+                rvalue = Builder.CreateZExt(rvalue, varType);
             } else if (varType->isFloatTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
                     rvalue = Builder.CreateSIToFP(rvalue, varType);

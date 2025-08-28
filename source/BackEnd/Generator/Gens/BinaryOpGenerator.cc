@@ -271,6 +271,66 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
                 return resultPtr;
             }
         }
+
+        if (Left->getType()->isPointerTy() && Right->getType()->isIntegerTy(8)) {
+            llvm::LLVMContext& ctx = Builder.getContext();
+            
+            llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
+            if (!strlenFunc) {
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                    llvm::Type::getInt64Ty(ctx),
+                    {llvm::PointerType::get(ctx, 0)},
+                    false
+                );
+                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+
+            llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
+            if (!mallocFunc) {
+                llvm::FunctionType* mallocType = llvm::FunctionType::get(
+                    llvm::PointerType::get(ctx, 0),
+                    {llvm::Type::getInt64Ty(ctx)},
+                    false
+                );
+                mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+
+            llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
+            if (!strcpyFunc) {
+                llvm::FunctionType* strcpyType = llvm::FunctionType::get(
+                    llvm::PointerType::get(ctx, 0),
+                    {llvm::PointerType::get(ctx, 0), llvm::PointerType::get(ctx, 0)},
+                    false
+                );
+                strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
+            }
+
+            // Get length of the string
+            llvm::Value* leftLen = Builder.CreateCall(strlenFunc, {Left});
+            // Add 2: one for the char, one for null terminator
+            llvm::Value* newLen = Builder.CreateAdd(leftLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 2));
+            
+            // Allocate new buffer
+            llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {newLen});
+            if (!resultPtr) {
+                Write("Binary Expression", "Failed to allocate memory for string + char concatenation" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            // Copy the original string
+            Builder.CreateCall(strcpyFunc, {resultPtr, Left});
+            
+            // Append the character manually
+            llvm::Value* charPos = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(ctx), resultPtr, leftLen);
+            Builder.CreateStore(Right, charPos);
+            
+            // Add null terminator
+            llvm::Value* nullPos = Builder.CreateAdd(leftLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 1));
+            llvm::Value* nullPosPtr = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(ctx), resultPtr, nullPos);
+            Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(ctx), 0), nullPosPtr);
+            
+            return resultPtr;
+        }
         
         llvm::Type* commonType = promoteToCommonType(Left, Right);
         if (commonType && commonType->isFloatingPointTy()) {

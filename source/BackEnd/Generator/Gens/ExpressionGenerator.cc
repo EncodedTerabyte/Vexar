@@ -98,6 +98,13 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
         return Result;
     } else if (Expr->type == NodeType::Array || Expr->type == NodeType::ArrayAccess) {
         return GenerateArrayExpression(Expr, Builder, SymbolStack, Methods);
+    } else if (Expr->type == NodeType::Boolean) {
+        auto* BoolNode = static_cast<BooleanNode*>(Expr.get());
+        if (!BoolNode) {
+            Write("Expression Generation", "Failed to cast to BooleanNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return llvm::ConstantInt::get(Builder.getInt1Ty(), BoolNode->value);
     }
        
     Write("Expression Generation", "Unsupported expression type: " + std::to_string(static_cast<int>(Expr->type)) + Location, 2, true, true, "");

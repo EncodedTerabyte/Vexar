@@ -59,7 +59,7 @@ namespace NumberExpression {
            }
            return node;
        }
-
+       
        if (tok.type == TokenType::String) {
            hasStrings = true;
            parser.advance();
@@ -86,8 +86,13 @@ namespace NumberExpression {
            return node;
        }
 
-       if (tok.type == TokenType::Identifier) {
-           return IdentifierExpression::Parse(parser);
+       if ((tok.value == "true" || tok.value == "false")) {
+           parser.advance();
+           auto node = std::make_unique<BooleanNode>();
+           node->type = NodeType::Boolean;
+           node->token = tok;
+           node->value = (tok.value == "true");
+           return node;
        }
 
        if (tok.type == TokenType::Delimiter && tok.value == "(") {
@@ -145,6 +150,10 @@ namespace NumberExpression {
            }
        }
 
+       if (tok.type == TokenType::Identifier) {
+            return IdentifierExpression::Parse(parser);
+        }
+       
        Write("Parser", "Unexpected token '" + tok.value + "' at line " +
              std::to_string(tok.line) + ", column " + std::to_string(tok.column),
              2, true, true, "");

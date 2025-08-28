@@ -402,10 +402,6 @@ struct FunctionCallNode : ASTNode {
 struct BooleanNode : ASTNode {
     bool value;
 
-    BooleanNode(bool v) : value(v) {
-        type = NodeType::Boolean;
-    }
-
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         return branch(prefix, isLast) + "[Boolean]: " + (value ? "true" : "false");
     }
