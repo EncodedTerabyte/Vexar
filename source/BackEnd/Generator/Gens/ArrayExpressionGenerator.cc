@@ -5,7 +5,7 @@ llvm::Value* GenerateArrayExpression(const std::unique_ptr<ASTNode>& Expr, llvm:
     std::string Location = " at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column);
     
     if (Expr->type == NodeType::Array) {
-        Write("Expression Generation", "Array literals should be handled in variable declarations, not expressions" + Location, 2, true, true, "");
+        //Write("Expression Generation", "Array literals should be handled in variable declarations, not expressions" + Location, 2, true, true, "");
         return nullptr;
     } 
     
@@ -40,69 +40,54 @@ llvm::Value* GenerateArrayExpression(const std::unique_ptr<ASTNode>& Expr, llvm:
         
         if (allocatedType->isPointerTy()) {
             llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
-            llvm::Value* indexValue = GenerateExpression(AccessNodePtr->expr, Builder, SymbolStack, Methods);
             
-            if (!indexValue || !indexValue->getType()->isIntegerTy()) {
-                Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
-                return nullptr;
+            if (AccessNodePtr->expr->type == NodeType::Array) {
+                auto* IndexArrayPtr = static_cast<ArrayNode*>(AccessNodePtr->expr.get());
+                
+                // For multidimensional array parameters, we treat them as flattened arrays
+                // Calculate the flattened index based on assumed dimensions
+                llvm::Value* flatIndex = nullptr;
+                
+                if (IndexArrayPtr->elements.size() == 2) {
+                    // 2D array: index = row * cols + col
+                    // Assume a fixed column size (you may need to pass this as metadata)
+                    llvm::Value* rowIndex = GenerateExpression(IndexArrayPtr->elements[0], Builder, SymbolStack, Methods);
+                    llvm::Value* colIndex = GenerateExpression(IndexArrayPtr->elements[1], Builder, SymbolStack, Methods);
+                    
+                    if (!rowIndex || !rowIndex->getType()->isIntegerTy() || 
+                        !colIndex || !colIndex->getType()->isIntegerTy()) {
+                        Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
+                        return nullptr;
+                    }
+                    
+                    // Assume 2 columns for your specific case (you can make this dynamic later)
+                    llvm::Value* colSize = llvm::ConstantInt::get(Builder.getInt32Ty(), 2);
+                    llvm::Value* rowOffset = Builder.CreateMul(rowIndex, colSize);
+                    flatIndex = Builder.CreateAdd(rowOffset, colIndex);
+                } else {
+                    // For other dimensions, use first index only for now
+                    flatIndex = GenerateExpression(IndexArrayPtr->elements[0], Builder, SymbolStack, Methods);
+                }
+                
+                if (!flatIndex) {
+                    Write("Expression Generation", "Failed to calculate flat index" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                llvm::Value* elementPtr = Builder.CreateInBoundsGEP(Builder.getInt32Ty(), loadedPtr, flatIndex);
+                return Builder.CreateLoad(Builder.getInt32Ty(), elementPtr);
+                
+            } else {
+                // Single dimension access on a pointer type
+                llvm::Value* indexValue = GenerateExpression(AccessNodePtr->expr, Builder, SymbolStack, Methods);
+                if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+                    Write("Expression Generation", "Invalid array index" + Location, 2, true, true, "");
+                    return nullptr;
+                }
+                
+                llvm::Value* elementPtr = Builder.CreateInBoundsGEP(Builder.getInt32Ty(), loadedPtr, indexValue);
+                return Builder.CreateLoad(Builder.getInt32Ty(), elementPtr);
             }
-            
-            llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
-            if (!strlenFunc) {
-                llvm::FunctionType* strlenType = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
-                    false
-                );
-                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-            
-            llvm::Function* exitFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("exit");
-            if (!exitFunc) {
-                llvm::FunctionType* exitType = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(Builder.getContext()),
-                    {llvm::Type::getInt32Ty(Builder.getContext())},
-                    false
-                );
-                exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-            
-            llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
-            if (!printfFunc) {
-                llvm::FunctionType* printfType = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
-                    true
-                );
-                printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-            
-            llvm::Value* strLength = Builder.CreateCall(strlenFunc, {loadedPtr});
-            llvm::Value* strLengthTrunc = Builder.CreateTrunc(strLength, Builder.getInt32Ty());
-            llvm::Value* indexTrunc = indexValue;
-            if (indexValue->getType() != Builder.getInt32Ty()) {
-                indexTrunc = Builder.CreateTrunc(indexValue, Builder.getInt32Ty());
-            }
-            
-            llvm::Value* isOutOfBounds = Builder.CreateICmpUGE(indexTrunc, strLengthTrunc);
-            
-            llvm::BasicBlock* currentBB = Builder.GetInsertBlock();
-            llvm::Function* function = currentBB->getParent();
-            llvm::BasicBlock* errorBB = llvm::BasicBlock::Create(Builder.getContext(), "bounds_error", function);
-            llvm::BasicBlock* validBB = llvm::BasicBlock::Create(Builder.getContext(), "valid_access", function);
-            
-            Builder.CreateCondBr(isOutOfBounds, errorBB, validBB);
-            
-            Builder.SetInsertPoint(errorBB);
-            llvm::Value* errorMsg = Builder.CreateGlobalString("Segmentation fault: string index out of bounds\n", "seg_fault_msg");
-            llvm::Value* errorMsgPtr = Builder.CreatePointerCast(errorMsg, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(printfFunc, {errorMsgPtr});
-            Builder.CreateCall(exitFunc, {llvm::ConstantInt::get(Builder.getInt32Ty(), 139)});
-            Builder.CreateUnreachable();
-            
-            Builder.SetInsertPoint(validBB);
-            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(Builder.getInt8Ty(), loadedPtr, indexValue);
-            return Builder.CreateLoad(Builder.getInt8Ty(), elementPtr);
         }
         
         if (AccessNodePtr->expr->type == NodeType::Array) {

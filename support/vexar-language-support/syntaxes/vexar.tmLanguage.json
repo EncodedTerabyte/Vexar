@@ -46,7 +46,7 @@
       "patterns": [
         {
           "name": "keyword.control.vexar",
-          "match": "\\b(if|else|while|for|ret)\\b"
+          "match": "\\b(if|else|while|for|ret|foreach|repeat|until|do|from)\\b"
         },
         {
           "name": "keyword.declaration.vexar",

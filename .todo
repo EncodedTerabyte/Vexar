@@ -1,4 +1,4 @@
-passing arrays through functions << i NEED to do this
+fix len function not working with pointers to array (create a possible function to conert pointers to arrays into regular arrays)
 function overloading
 return multiple values (tuples)
 user-defined structs

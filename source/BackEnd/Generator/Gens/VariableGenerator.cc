@@ -3,8 +3,6 @@
 #include <iostream>
 #include <cmath>
 
-
-
 std::unique_ptr<ASTNode> WrapASTNode(ASTNode* node) {
     return std::unique_ptr<ASTNode>(node);
 }
@@ -145,6 +143,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
 
     llvm::Type* BaseType = nullptr;
     bool isArrayFromLiteral = false;
+    bool isPointerArray = false;
     
     if (Type == "auto" || Type.empty()) {
         if (!Node->value) {
@@ -163,7 +162,8 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
             }
             
             if (tempValue->getType()->isPointerTy()) {
-                BaseType = llvm::PointerType::get(Builder.getContext(), 0);
+                BaseType = tempValue->getType();
+                isPointerArray = true;
             } else if (tempValue->getType()->isIntegerTy(8)) {
                 BaseType = Builder.getInt8Ty();
             } else if (tempValue->getType()->isIntegerTy()) {
@@ -189,6 +189,23 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
         size_t pos = baseTypeName.find('[');
         if (pos != std::string::npos) {
             baseTypeName = baseTypeName.substr(0, pos);
+            
+            size_t currentPos = pos;
+            int dimensions = 0;
+            while (currentPos < Type.length()) {
+                size_t openBracket = Type.find('[', currentPos);
+                size_t closeBracket = Type.find(']', currentPos);
+                if (openBracket != std::string::npos && closeBracket != std::string::npos) {
+                    dimensions++;
+                    currentPos = closeBracket + 1;
+                } else {
+                    break;
+                }
+            }
+            
+            if (dimensions > 0 && !Node->value) {
+                isPointerArray = true;
+            }
         }
         
         if (baseTypeName == "string") {
@@ -210,7 +227,14 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
 
     llvm::Type* FinalType = BaseType;
     
-    if (Node->arrayExpression) {
+    if (Type.find('[') != std::string::npos && !isArrayFromLiteral) {
+        FinalType = GetLLVMTypeFromStringWithArrays(Type, Builder.getContext());
+        if (!FinalType) {
+            Write("Variable Generation", "Invalid array type for variable: " + Name + Location, 2, true, true, "");
+            return;
+        }
+        isPointerArray = true;
+    } else if (Node->arrayExpression) {
         FinalType = GetArrayTypeFromDimensions(Node->arrayExpression.get(), BaseType, Builder, AllocaMap, Methods);
         if (!FinalType) {
             Write("Variable Generation", "Invalid array dimensions for variable: " + Name + Location, 2, true, true, "");
@@ -232,7 +256,7 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
     }
 
     if (Node->value) {
-        if (isArrayFromLiteral || Node->arrayExpression) {
+        if (isArrayFromLiteral && !isPointerArray) {
             if (Node->value->type == NodeType::Array) {
                 ArrayNode* arrayLiteral = static_cast<ArrayNode*>(Node->value.get());
                 std::vector<llvm::Value*> indices;
@@ -248,28 +272,34 @@ void GenerateVariable(VariableNode* Node, llvm::IRBuilder<>& Builder, ScopeStack
                 return;
             }
 
-            if (Value->getType() != BaseType) {
-                if (BaseType->isIntegerTy(8) && Value->getType()->isIntegerTy()) {
-                    Value = Builder.CreateTrunc(Value, BaseType);
-                } else if (BaseType->isIntegerTy(32) && Value->getType()->isIntegerTy(8)) {
-                    Value = Builder.CreateZExt(Value, BaseType);
-                } else if (BaseType->isIntegerTy(32) && Value->getType()->isFloatingPointTy()) {
-                    Value = Builder.CreateFPToSI(Value, BaseType);
-                } else if (BaseType->isIntegerTy(1) && Value->getType()->isIntegerTy()) {
-                    Value = Builder.CreateTrunc(Value, BaseType);
-                } else if (BaseType->isIntegerTy() && Value->getType()->isIntegerTy(1)) {
-                    Value = Builder.CreateZExt(Value, BaseType);
-                } else if (BaseType->isFloatTy()) {
+            if (Value->getType() != FinalType) {
+                if (FinalType->isIntegerTy(8) && Value->getType()->isIntegerTy()) {
+                    Value = Builder.CreateTrunc(Value, FinalType);
+                } else if (FinalType->isIntegerTy(32) && Value->getType()->isIntegerTy(8)) {
+                    Value = Builder.CreateZExt(Value, FinalType);
+                } else if (FinalType->isIntegerTy(32) && Value->getType()->isFloatingPointTy()) {
+                    Value = Builder.CreateFPToSI(Value, FinalType);
+                } else if (FinalType->isIntegerTy(1) && Value->getType()->isIntegerTy()) {
+                    Value = Builder.CreateTrunc(Value, FinalType);
+                } else if (FinalType->isIntegerTy() && Value->getType()->isIntegerTy(1)) {
+                    Value = Builder.CreateZExt(Value, FinalType);
+                } else if (FinalType->isFloatTy()) {
                     if (Value->getType()->isIntegerTy()) {
-                        Value = Builder.CreateSIToFP(Value, BaseType);
+                        Value = Builder.CreateSIToFP(Value, FinalType);
                     } else if (Value->getType()->isDoubleTy()) {
-                        Value = Builder.CreateFPTrunc(Value, BaseType);
+                        Value = Builder.CreateFPTrunc(Value, FinalType);
                     }
-                } else if (BaseType->isDoubleTy()) {
+                } else if (FinalType->isDoubleTy()) {
                     if (Value->getType()->isIntegerTy()) {
-                        Value = Builder.CreateSIToFP(Value, BaseType);
+                        Value = Builder.CreateSIToFP(Value, FinalType);
                     } else if (Value->getType()->isFloatTy()) {
-                        Value = Builder.CreateFPExt(Value, BaseType);
+                        Value = Builder.CreateFPExt(Value, FinalType);
+                    }
+                } else if (FinalType->isPointerTy() && Value->getType()->isPointerTy()) {
+                    if (FinalType == Value->getType()) {
+                    } else {
+                        Write("Variable Generation", "Pointer type mismatch for variable: " + Name + Location, 2, true, true, "");
+                        return;
                     }
                 } else {
                     Write("Variable Generation", "Type mismatch for variable: " + Name + Location, 2, true, true, "");

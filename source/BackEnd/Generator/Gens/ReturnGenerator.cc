@@ -8,25 +8,14 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
     }
     
     std::string StmtLocation = " at line " + std::to_string(Ret->token.line) + ", column " + std::to_string(Ret->token.column);
-    Write("Return Generator", "Processing return statement" + StmtLocation, 0, true, true, "");
     
     llvm::Value* Value = nullptr;
-    std::string typeName = "unknown";
     
     if (Ret->value) {
-        Write("Return Generator", "Generating return expression" + StmtLocation, 0, true, true, "");
         Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
         if (!Value) {
-            Write("Return Generator", "Failed to generate return expression" + StmtLocation, 2, true, true, "");
             return nullptr;
         }
-        
-        if (Value->getType()->isIntegerTy(1)) typeName = "i1 (bool)";
-        else if (Value->getType()->isIntegerTy(32)) typeName = "i32 (int)";
-        else if (Value->getType()->isFloatTy()) typeName = "float";
-        else if (Value->getType()->isDoubleTy()) typeName = "double";
-        
-        Write("Return Generator", "Generated return value of type: " + typeName + StmtLocation, 0, true, true, "");
     }
     
     llvm::Function* CurrentFunc = Builder.GetInsertBlock()->getParent();
@@ -36,19 +25,9 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
     }
 
     llvm::Type* ReturnType = CurrentFunc->getReturnType();
-    std::string returnTypeName = "unknown";
-    if (ReturnType->isIntegerTy(1)) returnTypeName = "i1 (bool)";
-    else if (ReturnType->isIntegerTy(32)) returnTypeName = "i32 (int)";
-    else if (ReturnType->isFloatTy()) returnTypeName = "float";
-    else if (ReturnType->isDoubleTy()) returnTypeName = "double";
-    else if (ReturnType->isVoidTy()) returnTypeName = "void";
-    
-    Write("Return Generator", "Function expects return type: " + returnTypeName + StmtLocation, 0, true, true, "");
 
     if (Value) {
         if (Value->getType() != ReturnType) {
-            Write("Return Generator", "Type mismatch: converting from " + typeName + " to " + returnTypeName + StmtLocation, 1, true, true, "");
-            
             if (ReturnType->isIntegerTy(1) && Value->getType()->isIntegerTy()) {
                 Value = Builder.CreateICmpNE(Value, llvm::ConstantInt::get(Value->getType(), 0), "tobool");
             }
@@ -80,21 +59,18 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
                 }
             }
             else {
-                Write("Return Generator", "Unsupported type conversion from " + typeName + " to " + returnTypeName + StmtLocation, 2, true, true, "");
+                Write("Return Generator", "Unsupported type conversion" + StmtLocation, 2, true, true, "");
                 return nullptr;
             }
         }
         
-        Write("Return Generator", "Creating return instruction" + StmtLocation, 0, true, true, "");
         llvm::ReturnInst* RetInst = Builder.CreateRet(Value);
         if (!RetInst) {
             Write("Return Generator", "Failed to create return instruction" + StmtLocation, 2, true, true, "");
             return nullptr;
         }
-        Write("Return Generator", "Successfully created return instruction" + StmtLocation, 0, true, true, "");
         return Value;
     } else {
-        Write("Return Generator", "Creating default return" + StmtLocation, 0, true, true, "");
         if (ReturnType->isVoidTy()) {
             llvm::ReturnInst* RetInst = Builder.CreateRetVoid();
             if (!RetInst) {

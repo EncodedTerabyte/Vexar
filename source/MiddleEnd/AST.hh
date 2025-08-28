@@ -359,7 +359,7 @@ struct ReturnNode : ASTNode {
 
 struct FunctionNode : ASTNode {
     std::string name;
-    std::vector<std::pair<std::string, std::string>> params;
+    std::vector<std::tuple<std::string, std::string, int>> params;
     std::string returnType = "void";
     std::unique_ptr<BlockNode> body;
     bool isInlined = false;
@@ -369,18 +369,24 @@ struct FunctionNode : ASTNode {
         std::ostringstream oss;
         oss << branch(prefix, isLast) << "[Function]: " << name << " : " << returnType;
 
-        if (!params.empty()) {
-            std::string paramsPrefix = nextPrefix(prefix, isLast);
-            oss << "\n" << branch(paramsPrefix, body == nullptr) << "[Parameters]";
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        bool hasParams = !params.empty();
+        bool hasBody = (body != nullptr);
+
+        if (hasParams) {
+            bool paramsIsLast = !hasBody;
+            oss << "\n" << branch(childPrefix, paramsIsLast) << "[Parameters]";
+            
+            std::string paramsChildPrefix = nextPrefix(childPrefix, paramsIsLast);
             for (size_t i = 0; i < params.size(); ++i) {
                 bool lastParam = (i == params.size() - 1);
-                oss << "\n" << branch(nextPrefix(paramsPrefix, body == nullptr), lastParam)
-                    << params[i].first << " : " << params[i].second;
+                oss << "\n" << branch(paramsChildPrefix, lastParam)
+                    << std::get<0>(params[i]) << " : " << std::get<1>(params[i]);
             }
         }
 
-        if (body) {
-            oss << "\n" << body->get(nextPrefix(prefix, isLast), true);
+        if (hasBody) {
+            oss << "\n" << body->get(childPrefix, true);
         }
 
         return oss.str();
