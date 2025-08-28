@@ -5,6 +5,7 @@
 #include <memory>
 #include <sstream>
 
+// dont ask why im not using enum!!!!! :')
 struct NodeType {
     static constexpr int Number = 0;
     static constexpr int Float = 1;
@@ -34,6 +35,9 @@ struct NodeType {
     static constexpr int CompoundAssignment = 25;
     static constexpr int Break = 26;
     static constexpr int SemiColon = 27;
+    static constexpr int MemberAccess = 28;
+    static constexpr int For = 29;
+    static constexpr int ForEach = 30;
 };
 
 struct ASTNode {
@@ -496,5 +500,82 @@ struct SemiColonNode : ASTNode {
     
     std::string get(const std::string& prefix = "", bool isLast = true) const override {
         return branch(prefix, isLast) + "[Statement End]";
+    }
+};
+
+struct MemberAccessNode : ASTNode {
+    std::unique_ptr<ASTNode> object;
+    std::unique_ptr<ASTNode> member;
+
+    MemberAccessNode() { type = NodeType::MemberAccess; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Member Access]";
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        if (object) oss << "\n" << object->get(childPrefix, !member);
+        if (member) oss << "\n" << member->get(childPrefix, true);
+        return oss.str();
+    }
+};
+
+struct ForNode : ASTNode {
+    std::unique_ptr<ASTNode> init;
+    std::unique_ptr<ConditionNode> condition;
+    std::unique_ptr<ASTNode> increment;
+    std::unique_ptr<BlockNode> body;
+
+    ForNode() { type = NodeType::For; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[For]";
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        
+        if (init) {
+            oss << "\n" << branch(childPrefix, false) << "[Init]";
+            oss << "\n" << init->get(nextPrefix(childPrefix, false), true);
+        }
+        
+        if (condition) {
+            oss << "\n" << condition->get(childPrefix, false);
+        }
+        
+        if (increment) {
+            oss << "\n" << branch(childPrefix, false) << "[Increment]";
+            oss << "\n" << increment->get(nextPrefix(childPrefix, false), true);
+        }
+        
+        if (body) {
+            oss << "\n" << body->get(childPrefix, true);
+        }
+        
+        return oss.str();
+    }
+};
+
+struct ForEachNode : ASTNode {
+    std::string variable;
+    std::string variableType;
+    std::unique_ptr<ASTNode> iterable;
+    std::unique_ptr<BlockNode> body;
+
+    ForEachNode() { type = NodeType::ForEach; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[ForEach]: " << variable << " : " << variableType;
+        std::string childPrefix = nextPrefix(prefix, isLast);
+        
+        if (iterable) {
+            oss << "\n" << branch(childPrefix, false) << "[Iterable]";
+            oss << "\n" << iterable->get(nextPrefix(childPrefix, false), true);
+        }
+        
+        if (body) {
+            oss << "\n" << body->get(childPrefix, true);
+        }
+        
+        return oss.str();
     }
 };

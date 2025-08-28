@@ -9,6 +9,7 @@
 #include "WhileGenerator.hh"
 #include "BlockGenerator.hh"
 #include "BreakGenerator.hh"
+#include "ForGenerator.hh"
 #include "IfGenerator.hh"
 
 #include <iostream>
@@ -120,7 +121,17 @@ void ProcessStatement(const std::unique_ptr<ASTNode>& Statement, llvm::IRBuilder
         TempBlock->token = NestedBlock->token;
         TempBlock->statements = std::move(const_cast<std::vector<std::unique_ptr<ASTNode>>&>(NestedBlock->statements));
         GenerateBlock(TempBlock, Builder, SymbolStack, Methods);
-        
+    } else if (Statement->type == NodeType::For) {
+        auto* For = static_cast<ForNode*>(Statement.get());
+        if (!For) {
+            Write("Block Generator", "Failed to cast to ForNode" + StmtLocation, 2, true, true, "");
+            return;
+        }
+        llvm::Value* ForResult = GenerateFor(For, Builder, SymbolStack, Methods);
+        if (!ForResult) {
+            Write("Block Generator", "Invalid for statement" + StmtLocation, 2, true, true, "");
+            return;
+        }
     } else {
         Write("Block Generator", "Unsupported statement type: " + std::to_string(static_cast<int>(Statement->type)) + StmtLocation, 2, true, true, "");
     }

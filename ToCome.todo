@@ -1,5 +1,4 @@
-for loops
-passing arrays through functions
+passing arrays through functions << i NEED to do this
 function overloading
 return multiple values (tuples)
 user-defined structs
@@ -8,7 +7,6 @@ maps/dictionaries (optional but useful)
 constant variables (const or let)
 enums
 type inference
-basic error handling (maybe exceptions or result type)
 function pointers or lambdas
 operator overloading
 64-bit and 32-bit integer support

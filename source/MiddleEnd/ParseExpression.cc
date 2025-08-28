@@ -1,15 +1,4 @@
 #include "ParseExpression.hh"
-#include "AST.hh"
-#include "Expressions/FunctionExpression.hh"
-#include "Expressions/ReturnExpression.hh"
-#include "Expressions/StringExpression.hh"
-#include "Expressions/IfStatementExpression.hh"
-#include "Expressions/VariableExpression.hh"
-#include "Expressions/AssignmentExpression.hh"
-#include "Expressions/ArrayExpression.hh"
-#include "Expressions/WhileStatementExpression.hh"
-#include "Nodes/ParenNode.hh"
-#include "Nodes/BlockNode.hh"
 #include "../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
 std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, const std::set<std::string>& stopTokens) {
@@ -24,10 +13,6 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
         Node->token = tok;
         parser.advance();
         return Node; 
-    }
-
-    if (tok.type == TokenType::Identifier) {
-        return IdentifierExpression::Parse(parser);
     }
 
     if (tok.type == TokenType::Number ||
@@ -52,6 +37,9 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
     }
     if (tok.value == "while") {
         return WhileStatementExpression::Parse(parser);
+    }
+    if (tok.value == "for") {
+        return ForStatementExpression::Parse(parser);
     }
     if (tok.value == "ret") {
         return ReturnExpression::Parse(parser);
@@ -86,6 +74,11 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
         return Node;
     }
     
+    
+    if (tok.type == TokenType::Identifier) {
+        return IdentifierExpression::Parse(parser);
+    }
+
     Write("Parser",
           "Unexpected token '" + tok.value + "' at line " +
           std::to_string(tok.line) + ", column " + std::to_string(tok.column),

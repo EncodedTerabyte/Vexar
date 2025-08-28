@@ -15,6 +15,7 @@
 #include "Expressions/VariableExpression.hh"
 #include "Expressions/IfStatementExpression.hh"
 #include "Expressions/WhileStatementExpression.hh"
+#include "Expressions/ForStatementExpression.hh"
 #include "Expressions/ReturnExpression.hh"
 #include "Expressions/FunctionExpression.hh"
 

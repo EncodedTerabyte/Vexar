@@ -5,6 +5,7 @@
 #include "CallGenerator.hh"
 #include "NumberGenerator.hh"
 #include "UnaryOpGenerator.hh"
+#include "CompoundAssignmentGenerator.hh"
 
 #include "ArrayExpressionGenerator.hh"
 
@@ -75,6 +76,18 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
            return nullptr;
        }
        return Result;
+    } else if (Expr->type == NodeType::CompoundAssignment) {
+        auto* CompoundAssign = static_cast<CompoundAssignmentOpNode*>(Expr.get());
+        if (!CompoundAssign) {
+            Write("Expression Generation", "Failed to cast to CompoundAssignmentOpNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        llvm::Value* Result = GenerateCompoundAssignment(CompoundAssign, Builder, SymbolStack, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid compound assignment" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::Identifier) {
         llvm::Value* Result = GenerateIdentifier(Expr, Builder, SymbolStack, Methods);
         if (!Result) {

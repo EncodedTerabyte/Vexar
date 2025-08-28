@@ -1,5 +1,6 @@
 #include "IdentifierExpression.hh"
 #include "AssignmentExpression.hh"
+#include "NumberExpression.hh"
 #include "../ParseExpression.hh"
 #include "../../Miscellaneous/LoggerHandler/LoggerFile.hh"
 
@@ -24,15 +25,8 @@ namespace IdentifierExpression {
             callNode->type = NodeType::FunctionCall;
 
             while (parser.peek().value != ")") {
-                std::unique_ptr<ASTNode> arg;
-                const Token& argTok = parser.peek();
-                
-                if (argTok.type == TokenType::String) {
-                    arg = NumberExpression::ParseExpression(parser, {","});
-                } else {
-                    arg = Main::ParseExpression(parser, 0, {","});
-                }
-                
+                // Use NumberExpression::ParseExpression instead of Main::ParseExpression
+                auto arg = NumberExpression::ParseExpression(parser, {","});
                 if (!arg) {
                     Write("Parser", "Invalid function call argument for '" + node->name +
                           "' at line " + std::to_string(nextTok.line) + ", column " +
