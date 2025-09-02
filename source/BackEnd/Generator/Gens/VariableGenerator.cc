@@ -18,7 +18,7 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
     
     if (Type == "auto" || Type.empty()) {
         if (!Node->value) {
-            Write("Variable Generation", "Auto variable requires initialization: " + Name + Location, 2, true, true, "");
+            Write("Variable Generation", "Cannot declare variable without explicit type and without initialization: " + Name + Location, 2, true, true, "");
             return;
         }
         
@@ -120,6 +120,21 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
         }
     } else {
         AllocaInst = IR->var(Name, BaseType);
+        
+        if (!Node->value) {
+            llvm::Value* defaultValue = nullptr;
+            if (BaseType->isIntegerTy(32) || BaseType->isIntegerTy(8) || BaseType->isIntegerTy(1)) {
+                defaultValue = llvm::ConstantInt::get(BaseType, 0);
+            } else if (BaseType->isFloatingPointTy()) {
+                defaultValue = llvm::ConstantFP::get(BaseType, 0.0);
+            } else if (BaseType->isPointerTy()) {
+                defaultValue = IR->constString("");
+            }
+            
+            if (defaultValue) {
+                IR->store(defaultValue, AllocaInst);
+            }
+        }
         
         if (Node->value) {
             llvm::Value* Value = GenerateExpression(Node->value, IR, Methods);

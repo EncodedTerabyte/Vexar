@@ -10,3 +10,4 @@ type inference
 function pointers or lambdas
 operator overloading
 64-bit and 32-bit integer support
+later down the line, implement stuff like containers for std->readLine() for example

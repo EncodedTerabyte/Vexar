@@ -4,7 +4,7 @@
 void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
     if (!Builtins.empty()) return;
 
-    Builtins["write"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["print"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for print function", 2, true, true, "");
             return nullptr;
@@ -69,7 +69,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         return IR->constI32(0);
     };
     
-    Builtins["writeln"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["println"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for println function", 2, true, true, "");
             return nullptr;
@@ -134,7 +134,8 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         return IR->constI32(0);
     };
 
-    Builtins["input"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+
+    Builtins["readLine"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         llvm::Function* scanfFunc = IR->getModule()->getFunction("scanf");
         if (!scanfFunc) {
             llvm::FunctionType* scanfType = llvm::FunctionType::get(
@@ -152,12 +153,12 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             return nullptr;
         }
         
-        llvm::Value* formatStr = IR->constString(" %255[^\n]");
-        
+        llvm::Value* formatStr = IR->constString("%255s");
         IR->call(scanfFunc, {formatStr, bufferPtr});
+        
         return bufferPtr;
     };
-    
+
     Builtins["type"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for type function", 2, true, true, "");
@@ -195,7 +196,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         return IR->constString(typeStr);
     };
 
-    Builtins["str"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["toString"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for str function", 2, true, true, "");
             return nullptr;
@@ -366,11 +367,6 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             
             llvm::Type* allocatedType = allocaInst->getAllocatedType();
             
-            if (allocatedType->isPointerTy()) {
-                Write("Expression Generation", "Cannot determine length of array parameter: " + IdentifierNodePtr->name + Location, 1, true, true, "");
-                return IR->constI32(5);
-            }
-            
             if (allocatedType->isArrayTy()) {
                 llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
                 if (!arrayType) {
@@ -382,7 +378,32 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
                 return IR->constI32(arraySize);
             }
             
-            Write("Expression Generation", "Unsupported type for len function: " + IdentifierNodePtr->name + Location, 2, true, true, "");
+            if (allocatedType->isPointerTy()) {
+                llvm::Value* loadedPtr = IR->load(allocaInst);
+                
+                if (loadedPtr->getType() == IR->ptr(IR->i8())) {
+                    llvm::Function* strlenFunc = IR->getModule()->getFunction("strlen");
+                    if (!strlenFunc) {
+                        llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                            IR->i64(),
+                            {IR->ptr(IR->i8())},
+                            false
+                        );
+                        strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", IR->getModule());
+                    }
+                    
+                    llvm::Value* length = IR->call(strlenFunc, {loadedPtr});
+                    return IR->intCast(length, IR->i32());
+                } else {
+                    return IR->constI32(-1);
+                }
+            }
+            
+            if (allocatedType->isIntegerTy() || allocatedType->isFloatingPointTy()) {
+                return IR->constI32(1);
+            }
+            
+            Write("Expression Generation", "Cannot get length of variable: " + IdentifierNodePtr->name + Location, 2, true, true, "");
             return nullptr;
         }
         
@@ -449,7 +470,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             return nullptr;
         }
     };
-
+    
     Builtins["char"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for char function", 2, true, true, "");

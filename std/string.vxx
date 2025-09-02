@@ -1,4 +1,4 @@
-func toUpper(str: string): string {
+func toUpper(input: string): string {
     var chars_lower: char[] = {
         'a', 'b', 'c', 
         'd', 'e', 'f', 
@@ -23,32 +23,32 @@ func toUpper(str: string): string {
         'Y', 'Z'
     };
 
-    var max: int = len(str);
+    var max: int = len(input);
     var i = 0;
     var result: string = "";
 
     while (i < max) {
-        var c = str[i];
+        var c = input[i];
         var j = 0;
         var replaced = false;
         while (j < len(chars_lower)) {
             if (c == chars_lower[j]) {
-                result = result + str(chars_upper[j]);
+                result = result + chars_upper[j];
                 replaced = true;
                 break;
             }
             j++;
         }
         if (!replaced) {
-            result = result + str(c);
+            result = result + c;
         }
         i++;
     } 
 
-    ret str(result);
+    ret result;
 }
 
-func toLower(str: string): string {
+func toLower(input: string): string {
     var chars_lower: char[] = {
         'a', 'b', 'c', 
         'd', 'e', 'f', 
@@ -73,27 +73,27 @@ func toLower(str: string): string {
         'Y', 'Z'
     };
 
-    var max: int = len(str);
+    var max: int = len(input);
     var i = 0;
     var result: string = "";
 
     while (i < max) {
-        var c = str[i];
+        var c = input[i];
         var j = 0;
         var replaced = false;
         while (j < len(chars_upper)) {
             if (c == chars_upper[j]) {
-                result = result + str(chars_lower[j]);
+                result = result + chars_lower[j];
                 replaced = true;
                 break;
             }
             j++;
         }
         if (!replaced) {
-            result = result + str(c);
+            result = result + c;
         }
         i++;
     } 
 
-    ret str(result);
+    ret result;
 }
