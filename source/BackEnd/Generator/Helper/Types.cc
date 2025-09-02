@@ -49,3 +49,35 @@ std::string GetStringFromLLVMType(llvm::Type* type) {
     }
     return "unknown";
 }
+
+llvm::Type* GetLLVMTypeFromStringWithArrays(const std::string& typeStr, llvm::LLVMContext& ctx) {
+    std::string baseTypeName = typeStr;
+    int dimensions = 0;
+    
+    size_t pos = baseTypeName.find('[');
+    if (pos != std::string::npos) {
+        baseTypeName = baseTypeName.substr(0, pos);
+        size_t currentPos = pos;
+        while (currentPos < typeStr.length()) {
+            size_t openBracket = typeStr.find('[', currentPos);
+            size_t closeBracket = typeStr.find(']', currentPos);
+            if (openBracket != std::string::npos && closeBracket != std::string::npos) {
+                dimensions++;
+                currentPos = closeBracket + 1;
+            } else {
+                break;
+            }
+        }
+    }
+    
+    llvm::Type* baseType = GetLLVMTypeFromString(baseTypeName, ctx);
+    if (!baseType) {
+        return nullptr;
+    }
+    
+    if (dimensions > 0) {
+        return llvm::PointerType::get(baseType, 0);
+    }
+    
+    return baseType;
+}

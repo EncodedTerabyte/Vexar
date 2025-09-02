@@ -112,7 +112,12 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
     }
     
     if (ArrayAssign->indexExpr->type == NodeType::Array) {
-        auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
+        ArrayNode* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
+        if (!IndexArrayPtr) {
+            Write("Block Generator", "Failed to cast to ArrayNode" + StmtLocation, 2, true, true, "");
+            return nullptr;
+        }
+        
         std::vector<llvm::Value*> indices;
         indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
         

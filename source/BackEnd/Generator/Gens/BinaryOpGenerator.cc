@@ -38,13 +38,27 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         } else if (L->getType()->isFloatTy() || R->getType()->isFloatTy()) {
             targetType = llvm::Type::getFloatTy(Builder.getContext());
         } else if (L->getType()->isIntegerTy() && R->getType()->isIntegerTy()) {
-            return L->getType();
+            // Handle integer type promotion
+            unsigned leftBits = L->getType()->getIntegerBitWidth();
+            unsigned rightBits = R->getType()->getIntegerBitWidth();
+            unsigned targetBits = std::max(leftBits, rightBits);
+            
+            // Promote to at least i32 for operations
+            if (targetBits < 32) {
+                targetBits = 32;
+            }
+            
+            targetType = llvm::Type::getIntNTy(Builder.getContext(), targetBits);
         } else {
             return nullptr;
         }
         
-        if (L->getType()->isIntegerTy()) {
+        if (L->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
             L = Builder.CreateSIToFP(L, targetType);
+        } else if (L->getType()->isIntegerTy() && targetType->isIntegerTy()) {
+            if (L->getType()->getIntegerBitWidth() < targetType->getIntegerBitWidth()) {
+                L = Builder.CreateSExt(L, targetType);
+            }
         } else if (L->getType() != targetType) {
             if (L->getType()->isFloatTy() && targetType->isDoubleTy()) {
                 L = Builder.CreateFPExt(L, targetType);
@@ -53,8 +67,12 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
             }
         }
         
-        if (R->getType()->isIntegerTy()) {
+        if (R->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
             R = Builder.CreateSIToFP(R, targetType);
+        } else if (R->getType()->isIntegerTy() && targetType->isIntegerTy()) {
+            if (R->getType()->getIntegerBitWidth() < targetType->getIntegerBitWidth()) {
+                R = Builder.CreateSExt(R, targetType);
+            }
         } else if (R->getType() != targetType) {
             if (R->getType()->isFloatTy() && targetType->isDoubleTy()) {
                 R = Builder.CreateFPExt(R, targetType);

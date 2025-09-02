@@ -34,7 +34,7 @@ namespace FunctionExpression {
 
         if (parser.peek().value == "(") {
             parser.advance();
-            while (parser.peek().value != ")") {
+            while (parser.peek().value != ")" && parser.peek().type != TokenType::EndOfFile) {
                 Token paramName = parser.peek();
                 if (paramName.type != TokenType::Identifier) {
                     Write("Parser", "Expected parameter name, got '" + paramName.value +
@@ -60,14 +60,32 @@ namespace FunctionExpression {
                           std::to_string(paramType.column), 2, true, true, "");
                     return nullptr;
                 }
+                
+                std::string typeString = paramType.value;
                 parser.advance();
 
-                funcNode->params.push_back({paramName.value, paramType.value});
+                int dimensions = 0;
+                while (parser.peek().value == "[") {
+                    if (parser.peekNext().value == "]") {
+                        parser.advance();
+                        parser.advance();
+                        typeString += "[]";
+                        dimensions++;
+                        if (dimensions > 2) {
+                            Write("Parser", "Arrays support maximum 2 dimensions, got " + std::to_string(dimensions) + 
+                                  " at line " + std::to_string(parser.peek(-1).line), 2, true, true, "");
+                            return nullptr;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+
+                funcNode->params.push_back({paramName.value, typeString, dimensions});
 
                 if (parser.peek().value == ",") {
                     parser.advance();
-                } else if (parser.peek().value != ")" &&
-                           parser.peek().type != TokenType::EndOfFile) {
+                } else if (parser.peek().value != ")") {
                     Write("Parser", "Expected ',' or ')' in parameter list, got '" +
                           parser.peek().value + "' at line " +
                           std::to_string(parser.peek().line) + ", column " +
@@ -95,8 +113,28 @@ namespace FunctionExpression {
                       std::to_string(returnType.column), 2, true, true, "");
                 return nullptr;
             }
+            
+            std::string returnTypeString = returnType.value;
             parser.advance();
-            funcNode->returnType = returnType.value;
+            
+            int returnDimensions = 0;
+            while (parser.peek().value == "[") {
+                if (parser.peekNext().value == "]") {
+                    parser.advance();
+                    parser.advance();
+                    returnTypeString += "[]";
+                    returnDimensions++;
+                    if (returnDimensions > 2) {
+                        Write("Parser", "Return type arrays support maximum 2 dimensions, got " + std::to_string(returnDimensions) + 
+                              " at line " + std::to_string(parser.peek(-1).line), 2, true, true, "");
+                        return nullptr;
+                    }
+                } else {
+                    break;
+                }
+            }
+            
+            funcNode->returnType = returnTypeString;
         }
 
         funcNode->body = std::unique_ptr<BlockNode>(

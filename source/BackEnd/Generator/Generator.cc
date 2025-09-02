@@ -89,9 +89,514 @@ void Generator::PrintLLVM() {
     this->GetModulePtr()->print(llvm::outs(), nullptr);
 }
 
+void Generator::CompileTimeGarbageCollection() {
+    llvm::Module* Module = this->GetModulePtr();
+    llvm::LLVMContext& Context = Module->getContext();
+    
+    llvm::Function* freeFunc = Module->getFunction("free");
+    if (!freeFunc) {
+        llvm::Type* voidType = llvm::Type::getVoidTy(Context);
+        llvm::Type* i8PtrType = llvm::PointerType::get(llvm::Type::getInt8Ty(Context), 0);
+        llvm::FunctionType* freeFuncType = llvm::FunctionType::get(voidType, {i8PtrType}, false);
+        freeFunc = llvm::Function::Create(freeFuncType, llvm::Function::ExternalLinkage, "free", Module);
+        this->CInstance.FSymbolTable["free"] = freeFunc;
+    }
+    
+    llvm::Function* reallocFunc = Module->getFunction("realloc");
+    if (!reallocFunc) {
+        llvm::Type* i8PtrType = llvm::PointerType::get(llvm::Type::getInt8Ty(Context), 0);
+        llvm::Type* sizeType = llvm::Type::getInt64Ty(Context);
+        llvm::FunctionType* reallocFuncType = llvm::FunctionType::get(i8PtrType, {i8PtrType, sizeType}, false);
+        reallocFunc = llvm::Function::Create(reallocFuncType, llvm::Function::ExternalLinkage, "realloc", Module);
+        this->CInstance.FSymbolTable["realloc"] = reallocFunc;
+    }
+    
+    for (llvm::Function& F : *Module) {
+        if (F.isDeclaration()) continue;
+        
+        std::map<llvm::Value*, std::set<llvm::Instruction*>> mallocToUsers;
+        std::map<llvm::Value*, std::set<llvm::Value*>> aliasMap;
+        std::map<llvm::Value*, llvm::Instruction*> lastUsageMap;
+        std::map<llvm::Value*, llvm::BasicBlock*> mallocDominanceMap;
+        std::set<llvm::Value*> explicitlyFreedPointers;
+        std::set<llvm::Value*> escapedPointers;
+        std::set<llvm::Value*> conditionallyEscapedPointers;
+        std::vector<llvm::CallInst*> allMallocCalls;
+        std::vector<llvm::CallInst*> allReallocCalls;
+        std::map<llvm::BasicBlock*, std::set<llvm::Value*>> liveAtBlockEnd;
+        std::map<llvm::Value*, std::vector<llvm::Instruction*>> usageChains;
+        
+        for (llvm::BasicBlock& BB : F) {
+            for (llvm::Instruction& I : BB) {
+                if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(&I)) {
+                    if (llvm::Function* calledFunc = CI->getCalledFunction()) {
+                        if (calledFunc->getName() == "malloc") {
+                            allMallocCalls.push_back(CI);
+                            mallocToUsers[CI] = std::set<llvm::Instruction*>();
+                            mallocDominanceMap[CI] = &BB;
+                        } else if (calledFunc->getName() == "realloc") {
+                            allReallocCalls.push_back(CI);
+                            if (CI->getNumOperands() > 0) {
+                                llvm::Value* oldPtr = CI->getOperand(0);
+                                if (!llvm::isa<llvm::ConstantPointerNull>(oldPtr)) {
+                                    explicitlyFreedPointers.insert(oldPtr);
+                                }
+                            }
+                        } else if (calledFunc->getName() == "free") {
+                            if (CI->getNumOperands() > 0) {
+                                explicitlyFreedPointers.insert(CI->getOperand(0));
+                            }
+                        } else if (calledFunc->getName() == "calloc") {
+                            allMallocCalls.push_back(CI);
+                            mallocToUsers[CI] = std::set<llvm::Instruction*>();
+                            mallocDominanceMap[CI] = &BB;
+                        }
+                    }
+                }
+                
+                if (llvm::ReturnInst* RI = llvm::dyn_cast<llvm::ReturnInst>(&I)) {
+                    if (RI->getReturnValue() && RI->getReturnValue()->getType()->isPointerTy()) {
+                        escapedPointers.insert(RI->getReturnValue());
+                    }
+                }
+                
+                if (llvm::StoreInst* SI = llvm::dyn_cast<llvm::StoreInst>(&I)) {
+                    llvm::Value* storedValue = SI->getValueOperand();
+                    llvm::Value* storePtr = SI->getPointerOperand();
+                    
+                    if (storedValue->getType()->isPointerTy()) {
+                        if (llvm::isa<llvm::GlobalVariable>(storePtr)) {
+                            escapedPointers.insert(storedValue);
+                        } else if (llvm::isa<llvm::Argument>(storePtr)) {
+                            escapedPointers.insert(storedValue);
+                        }
+                    }
+                }
+                
+                if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(&I)) {
+                    if (llvm::Function* calledFunc = CI->getCalledFunction()) {
+                        if (calledFunc->isDeclaration()) {
+                            for (unsigned i = 0; i < CI->getNumOperands() - 1; ++i) {
+                                llvm::Value* arg = CI->getOperand(i);
+                                if (arg->getType()->isPointerTy()) {
+                                    std::string funcName = calledFunc->getName().str();
+                                    if (funcName != "printf" && funcName != "sprintf" && 
+                                        funcName != "strlen" && funcName != "strcpy" && 
+                                        funcName != "strcat" && funcName != "strcmp" &&
+                                        funcName != "strncpy" && funcName != "strncat" &&
+                                        funcName != "memcpy" && funcName != "memset" &&
+                                        funcName != "memmove" && funcName != "memcmp") {
+                                        conditionallyEscapedPointers.insert(arg);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        for (llvm::CallInst* mallocCall : allMallocCalls) {
+            std::set<llvm::Value*> visited;
+            std::vector<llvm::Value*> worklist;
+            worklist.push_back(mallocCall);
+            
+            while (!worklist.empty()) {
+                llvm::Value* current = worklist.back();
+                worklist.pop_back();
+                
+                if (visited.count(current)) continue;
+                visited.insert(current);
+                
+                for (llvm::User* user : current->users()) {
+                    if (llvm::Instruction* userInst = llvm::dyn_cast<llvm::Instruction>(user)) {
+                        mallocToUsers[mallocCall].insert(userInst);
+                        usageChains[mallocCall].push_back(userInst);
+                        
+                        if (llvm::isa<llvm::BitCastInst>(userInst) || 
+                            llvm::isa<llvm::GetElementPtrInst>(userInst) ||
+                            llvm::isa<llvm::PHINode>(userInst) ||
+                            llvm::isa<llvm::SelectInst>(userInst)) {
+                            worklist.push_back(userInst);
+                            aliasMap[mallocCall].insert(userInst);
+                        }
+                    }
+                }
+            }
+        }
+        
+        auto findSafeDominatedInsertionPoint = [&](llvm::Value* mallocVal, llvm::Instruction* lastUse) -> llvm::Instruction* {
+            if (!lastUse) return nullptr;
+            
+            llvm::BasicBlock* insertBB = lastUse->getParent();
+            llvm::Instruction* insertPoint = lastUse;
+            
+            if (llvm::isa<llvm::PHINode>(lastUse)) {
+                insertPoint = &insertBB->front();
+                while (llvm::isa<llvm::PHINode>(insertPoint)) {
+                    insertPoint = insertPoint->getNextNode();
+                }
+            } else {
+                insertPoint = lastUse->getNextNode();
+            }
+            
+            while (insertPoint && insertPoint->getParent() == insertBB) {
+                if (llvm::isa<llvm::ReturnInst>(insertPoint) || 
+                    llvm::isa<llvm::BranchInst>(insertPoint) ||
+                    llvm::isa<llvm::SwitchInst>(insertPoint) ||
+                    llvm::isa<llvm::IndirectBrInst>(insertPoint)) {
+                    break;
+                }
+                
+                if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(insertPoint)) {
+                    if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "free") {
+                        break;
+                    }
+                }
+                
+                insertPoint = insertPoint->getNextNode();
+            }
+            
+            if (!insertPoint || insertPoint->getParent() != insertBB) {
+                if (insertBB->getTerminator()) {
+                    insertPoint = insertBB->getTerminator();
+                } else {
+                    return nullptr;
+                }
+            }
+            
+            return insertPoint;
+        };
+        
+        auto isInSameBasicBlock = [&](llvm::Instruction* inst1, llvm::Instruction* inst2) -> bool {
+            return inst1 && inst2 && inst1->getParent() == inst2->getParent();
+        };
+        
+        auto comesBefore = [&](llvm::Instruction* first, llvm::Instruction* second) -> bool {
+            if (!isInSameBasicBlock(first, second)) return false;
+            
+            for (llvm::Instruction& I : *first->getParent()) {
+                if (&I == first) return true;
+                if (&I == second) return false;
+            }
+            return false;
+        };
+        
+        auto isPointerStillLiveAfterPoint = [&](llvm::Value* ptr, llvm::Instruction* point) -> bool {
+            for (llvm::User* user : ptr->users()) {
+                if (llvm::Instruction* userInst = llvm::dyn_cast<llvm::Instruction>(user)) {
+                    if (userInst == point) continue;
+                    
+                    llvm::BasicBlock* userBB = userInst->getParent();
+                    llvm::BasicBlock* pointBB = point->getParent();
+                    
+                    if (userBB == pointBB) {
+                        if (!comesBefore(point, userInst)) {
+                            return true;
+                        }
+                    } else {
+                        auto reachable = [&](llvm::BasicBlock* from, llvm::BasicBlock* to) -> bool {
+                            std::set<llvm::BasicBlock*> visited;
+                            std::vector<llvm::BasicBlock*> queue;
+                            queue.push_back(from);
+                            
+                            while (!queue.empty()) {
+                                llvm::BasicBlock* current = queue.back();
+                                queue.pop_back();
+                                
+                                if (visited.count(current)) continue;
+                                visited.insert(current);
+                                
+                                if (current == to) return true;
+                                
+                                for (llvm::BasicBlock* succ : llvm::successors(current)) {
+                                    if (!visited.count(succ)) {
+                                        queue.push_back(succ);
+                                    }
+                                }
+                            }
+                            return false;
+                        };
+                        
+                        if (reachable(pointBB, userBB)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+        
+        for (llvm::CallInst* mallocCall : allMallocCalls) {
+            bool isExplicitlyFreed = false;
+            bool escapes = false;
+            bool conditionallyEscapes = false;
+            llvm::Instruction* lastUsage = nullptr;
+            std::set<llvm::Instruction*> allUsages;
+            
+            std::set<llvm::Value*> visited;
+            std::vector<llvm::Value*> worklist;
+            worklist.push_back(mallocCall);
+            
+            while (!worklist.empty()) {
+                llvm::Value* current = worklist.back();
+                worklist.pop_back();
+                
+                if (visited.count(current)) continue;
+                visited.insert(current);
+                
+                if (explicitlyFreedPointers.count(current)) {
+                    isExplicitlyFreed = true;
+                    break;
+                }
+                
+                if (escapedPointers.count(current)) {
+                    escapes = true;
+                    break;
+                }
+                
+                if (conditionallyEscapedPointers.count(current)) {
+                    conditionallyEscapes = true;
+                }
+                
+                for (llvm::User* user : current->users()) {
+                    if (llvm::Instruction* userInst = llvm::dyn_cast<llvm::Instruction>(user)) {
+                        allUsages.insert(userInst);
+                        
+                        if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(userInst)) {
+                            if (llvm::Function* calledFunc = CI->getCalledFunction()) {
+                                if (calledFunc->getName() == "free") {
+                                    isExplicitlyFreed = true;
+                                    break;
+                                } else if (calledFunc->getName() == "realloc") {
+                                    if (CI->getOperand(0) == current) {
+                                        isExplicitlyFreed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (llvm::ReturnInst* RI = llvm::dyn_cast<llvm::ReturnInst>(userInst)) {
+                            if (RI->getReturnValue() == current) {
+                                escapes = true;
+                                break;
+                            }
+                        }
+                        
+                        if (llvm::StoreInst* SI = llvm::dyn_cast<llvm::StoreInst>(userInst)) {
+                            if (SI->getValueOperand() == current) {
+                                llvm::Value* storePtr = SI->getPointerOperand();
+                                if (llvm::isa<llvm::GlobalVariable>(storePtr) || 
+                                    llvm::isa<llvm::Argument>(storePtr)) {
+                                    escapes = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (llvm::isa<llvm::BitCastInst>(userInst) || 
+                            llvm::isa<llvm::GetElementPtrInst>(userInst) ||
+                            llvm::isa<llvm::PHINode>(userInst) ||
+                            llvm::isa<llvm::SelectInst>(userInst)) {
+                            worklist.push_back(userInst);
+                        }
+                        
+                        if (!lastUsage || 
+                            (isInSameBasicBlock(lastUsage, userInst) && comesBefore(lastUsage, userInst)) ||
+                            (!isInSameBasicBlock(lastUsage, userInst))) {
+                            lastUsage = userInst;
+                        }
+                    }
+                }
+            }
+            
+            if (!isExplicitlyFreed && !escapes && (!conditionallyEscapes || allUsages.size() < 5)) {
+                llvm::Instruction* insertPoint = findSafeDominatedInsertionPoint(mallocCall, lastUsage);
+                
+                if (insertPoint && !llvm::isa<llvm::ReturnInst>(insertPoint) && 
+                    !llvm::isa<llvm::UnreachableInst>(insertPoint)) {
+                    
+                    if (!isPointerStillLiveAfterPoint(mallocCall, insertPoint)) {
+                        llvm::IRBuilder<> Builder(insertPoint);
+                        
+                        llvm::Value* ptr = mallocCall;
+                        llvm::Type* i8PtrType = llvm::PointerType::get(llvm::Type::getInt8Ty(Context), 0);
+                        if (ptr->getType() != i8PtrType) {
+                            ptr = Builder.CreateBitCast(ptr, i8PtrType, "gc_cast");
+                        }
+                        
+                        llvm::Value* nullCheck = Builder.CreateICmpNE(ptr, 
+                            llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(i8PtrType)), 
+                            "gc_null_check");
+                        
+                        llvm::BasicBlock* currentBB = insertPoint->getParent();
+                        llvm::BasicBlock* freeBB = llvm::BasicBlock::Create(Context, "gc_free", &F);
+                        llvm::BasicBlock* contBB = llvm::BasicBlock::Create(Context, "gc_cont", &F);
+                        
+                        Builder.CreateCondBr(nullCheck, freeBB, contBB);
+                        
+                        Builder.SetInsertPoint(freeBB);
+                        Builder.CreateCall(freeFunc, {ptr});
+                        Builder.CreateBr(contBB);
+                        
+                        std::vector<llvm::Instruction*> toMove;
+                        llvm::Instruction* nextInst = insertPoint->getNextNode();
+                        while (nextInst) {
+                            toMove.push_back(nextInst);
+                            nextInst = nextInst->getNextNode();
+                        }
+                        
+                        for (llvm::Instruction* inst : toMove) {
+                            inst->removeFromParent();
+                            inst->insertInto(contBB, contBB->end());
+                        }
+                        
+                        Builder.SetInsertPoint(contBB);
+                    }
+                }
+            }
+        }
+        
+        std::vector<llvm::Instruction*> instructionsToRemove;
+        std::set<llvm::BasicBlock*> processedBlocks;
+        
+        for (llvm::BasicBlock& BB : F) {
+            if (processedBlocks.count(&BB)) continue;
+            
+            for (llvm::Instruction& I : BB) {
+                if (llvm::BranchInst* BI = llvm::dyn_cast<llvm::BranchInst>(&I)) {
+                    if (BI->isUnconditional()) {
+                        llvm::BasicBlock* target = BI->getSuccessor(0);
+                        if (target == BI->getParent()) {
+                            llvm::IRBuilder<> Builder(&I);
+                            llvm::Type* returnType = F.getReturnType();
+                            if (returnType->isVoidTy()) {
+                                Builder.CreateRetVoid();
+                            } else if (returnType->isIntegerTy()) {
+                                Builder.CreateRet(llvm::ConstantInt::get(returnType, 0));
+                            } else {
+                                Builder.CreateRet(llvm::Constant::getNullValue(returnType));
+                            }
+                            instructionsToRemove.push_back(&I);
+                            processedBlocks.insert(&BB);
+                            break;
+                        }
+                    } else if (BI->isConditional()) {
+                        if (llvm::ConstantInt* CI = llvm::dyn_cast<llvm::ConstantInt>(BI->getCondition())) {
+                            llvm::BasicBlock* target = nullptr;
+                            if (CI->isOne()) {
+                                target = BI->getSuccessor(0);
+                            } else {
+                                target = BI->getSuccessor(1);
+                            }
+                            
+                            if (target == BI->getParent()) {
+                                llvm::IRBuilder<> Builder(&I);
+                                llvm::Type* returnType = F.getReturnType();
+                                if (returnType->isVoidTy()) {
+                                    Builder.CreateRetVoid();
+                                } else if (returnType->isIntegerTy()) {
+                                    Builder.CreateRet(llvm::ConstantInt::get(returnType, 0));
+                                } else {
+                                    Builder.CreateRet(llvm::Constant::getNullValue(returnType));
+                                }
+                                instructionsToRemove.push_back(&I);
+                                processedBlocks.insert(&BB);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (llvm::SwitchInst* SI = llvm::dyn_cast<llvm::SwitchInst>(&I)) {
+                    for (auto Case : SI->cases()) {
+                        if (Case.getCaseSuccessor() == SI->getParent()) {
+                            llvm::IRBuilder<> Builder(&I);
+                            llvm::Type* returnType = F.getReturnType();
+                            if (returnType->isVoidTy()) {
+                                Builder.CreateRetVoid();
+                            } else if (returnType->isIntegerTy()) {
+                                Builder.CreateRet(llvm::ConstantInt::get(returnType, 0));
+                            } else {
+                                Builder.CreateRet(llvm::Constant::getNullValue(returnType));
+                            }
+                            instructionsToRemove.push_back(&I);
+                            processedBlocks.insert(&BB);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        
+        for (llvm::Instruction* I : instructionsToRemove) {
+            if (I->getParent()) {
+                I->eraseFromParent();
+            }
+        }
+        
+        std::map<llvm::BasicBlock*, std::vector<llvm::CallInst*>> blockToFreeCalls;
+        for (llvm::BasicBlock& BB : F) {
+            for (llvm::Instruction& I : BB) {
+                if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(&I)) {
+                    if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "free") {
+                        blockToFreeCalls[&BB].push_back(CI);
+                    }
+                }
+            }
+        }
+        
+        for (auto& pair : blockToFreeCalls) {
+            llvm::BasicBlock* BB = pair.first;
+            auto& freeCalls = pair.second;
+            
+            if (freeCalls.size() > 1) {
+                std::set<llvm::Value*> freedPointers;
+                std::vector<llvm::CallInst*> redundantFrees;
+                
+                for (llvm::CallInst* freeCall : freeCalls) {
+                    llvm::Value* ptr = freeCall->getOperand(0);
+                    if (freedPointers.count(ptr)) {
+                        redundantFrees.push_back(freeCall);
+                    } else {
+                        freedPointers.insert(ptr);
+                    }
+                }
+                
+                for (llvm::CallInst* redundantFree : redundantFrees) {
+                    redundantFree->eraseFromParent();
+                }
+            }
+        }
+        
+        for (llvm::BasicBlock& BB : F) {
+            for (auto it = BB.begin(); it != BB.end();) {
+                llvm::Instruction& I = *it;
+                ++it;
+                
+                if (llvm::CallInst* CI = llvm::dyn_cast<llvm::CallInst>(&I)) {
+                    if (CI->getCalledFunction() && CI->getCalledFunction()->getName() == "malloc") {
+                        if (CI->use_empty()) {
+                            CI->eraseFromParent();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void Generator::ValidateModule(bool EmitWarnings) {
     llvm::Module* Module = this->GetModulePtr();
     FunctionSymbols& UserFunctions = this->CInstance.FSymbolTable;
+    
+    static const std::unordered_set<std::string> systemFunctions = {
+        "main", "printf", "scanf", "malloc", "free", "sprintf", "strlen",
+        "strcpy", "strcat", "strtod", "strcmp", "atoi", "atof", "exit", 
+        "realloc", "atexit", "calloc", "memcpy", "memset", "memmove", 
+        "memcmp", "strncpy", "strncat"
+    };
     
     std::unordered_map<std::string, bool> declaredVariables;
     std::unordered_map<std::string, bool> initializedVariables;
@@ -104,14 +609,7 @@ void Generator::ValidateModule(bool EmitWarnings) {
         bool hasReturn = false;
         bool unreachableCodeWarned = false;
         
-        if (Function.getName() != "main" && Function.getName() != "printf" && 
-            Function.getName() != "scanf" && Function.getName() != "malloc" && 
-            Function.getName() != "sprintf" && Function.getName() != "strlen" &&
-            Function.getName() != "strcpy" && Function.getName() != "strcat" &&
-            Function.getName() != "strtod" && Function.getName() != "strcmp" &&
-            Function.getName() != "atoi" && Function.getName() != "atof" &&
-            Function.getName() != "exit") {
-            
+        if (systemFunctions.find(Function.getName().str()) == systemFunctions.end()) {
             auto userFuncIt = UserFunctions.find(Function.getName().str());
             if (userFuncIt == UserFunctions.end()) {
                 Write("Validator", "Function '" + Function.getName().str() + "' is defined but not in symbol table", 2, true, true, "");
@@ -169,62 +667,24 @@ void Generator::ValidateModule(bool EmitWarnings) {
                 if (auto* CallInst = llvm::dyn_cast<llvm::CallInst>(&Instruction)) {
                     llvm::Function* CalledFunc = CallInst->getCalledFunction();
 
-                    if (CalledFunc && CalledFunc->getName() != "printf" &&
-                        CalledFunc->getName() != "scanf" &&
-                        CalledFunc->getName() != "malloc" &&
-                        CalledFunc->getName() != "sprintf" &&
-                        CalledFunc->getName() != "strlen" &&
-                        CalledFunc->getName() != "strcpy" &&
-                        CalledFunc->getName() != "strcat" &&
-                        CalledFunc->getName() != "strtod" &&
-                        CalledFunc->getName() != "strcmp" &&
-                        CalledFunc->getName() != "atoi" &&
-                        CalledFunc->getName() != "atof" &&
-                        CalledFunc->getName() != "exit") {
+                    if (CalledFunc && systemFunctions.find(CalledFunc->getName().str()) == systemFunctions.end()) {
+                        auto userFuncIt = UserFunctions.find(CalledFunc->getName().str());
+                        if (userFuncIt == UserFunctions.end()) {
+                            Write("Validator", "Call to undefined function '" + CalledFunc->getName().str() + "'", 2, true, true, "");
+                        } else {
+                            llvm::Function* UserFunc = userFuncIt->second;
+                            if (CallInst->getNumOperands() != UserFunc->arg_size() + 1) {
+                                Write("Validator", "Function '" + CalledFunc->getName().str() + "' called with " + std::to_string(CallInst->getNumOperands() - 1) + " arguments, expected " + std::to_string(UserFunc->arg_size()), 2, true, true, "");
+                            }
 
-                      auto userFuncIt =
-                          UserFunctions.find(CalledFunc->getName().str());
-                      if (userFuncIt == UserFunctions.end()) {
-                        Write("Validator",
-                              "Call to undefined function '" +
-                                  CalledFunc->getName().str() + "'",
-                              2, true, true, "");
-                      } else {
-                        llvm::Function *UserFunc = userFuncIt->second;
-                        if (CallInst->getNumOperands() !=
-                            UserFunc->arg_size() + 1) {
-                          Write("Validator",
-                                "Function '" + CalledFunc->getName().str() +
-                                    "' called with " +
-                                    std::to_string(CallInst->getNumOperands() -
-                                                   1) +
-                                    " arguments, expected " +
-                                    std::to_string(UserFunc->arg_size()),
-                                2, true, true, "");
+                            for (size_t i = 0; i < std::min((size_t)(CallInst->getNumOperands() - 1), (size_t)UserFunc->arg_size()); ++i) {
+                                llvm::Type* ArgType = CallInst->getOperand(i)->getType();
+                                llvm::Type* ParamType = UserFunc->getFunctionType()->getParamType(i);
+                                if (ArgType != ParamType && !((ArgType->isIntegerTy() && ParamType->isFloatingPointTy()) || (ArgType->isFloatingPointTy() && ParamType->isIntegerTy()))) {
+                                    Write("Validator", "Type mismatch in function call to '" + CalledFunc->getName().str() + "' at parameter " + std::to_string(i + 1), 2, true, true, "");
+                                }
+                            }
                         }
-
-                        for (size_t i = 0;
-                             i <
-                             std::min((size_t)(CallInst->getNumOperands() - 1),
-                                      (size_t)UserFunc->arg_size());
-                             ++i) {
-                          llvm::Type *ArgType =
-                              CallInst->getOperand(i)->getType();
-                          llvm::Type *ParamType =
-                              UserFunc->getFunctionType()->getParamType(i);
-                          if (ArgType != ParamType &&
-                              !((ArgType->isIntegerTy() &&
-                                 ParamType->isFloatingPointTy()) ||
-                                (ArgType->isFloatingPointTy() &&
-                                 ParamType->isIntegerTy()))) {
-                            Write("Validator",
-                                  "Type mismatch in function call to '" +
-                                      CalledFunc->getName().str() +
-                                      "' at parameter " + std::to_string(i + 1),
-                                  2, true, true, "");
-                          }
-                        }
-                      }
                     }
 
                     if (CalledFunc && CalledFunc->getName() == "printf") {
@@ -397,16 +857,8 @@ void Generator::ValidateModule(bool EmitWarnings) {
         }
 
         if (!Function.getReturnType()->isVoidTy() && !hasReturn &&
-            Function.getName() != "printf" && Function.getName() != "scanf" &&
-            Function.getName() != "malloc" && Function.getName() != "sprintf" &&
-            Function.getName() != "strlen" && Function.getName() != "strcpy" &&
-            Function.getName() != "strcat" && Function.getName() != "strtod" &&
-            Function.getName() != "strcmp" && Function.getName() != "atoi" &&
-            Function.getName() != "atof" && Function.getName() != "exit") {
-          Write("Validator",
-                "Function '" + Function.getName().str() +
-                    "' may not return a value on all code paths",
-                2, true, true, "");
+            systemFunctions.find(Function.getName().str()) == systemFunctions.end()) {
+            Write("Validator", "Function '" + Function.getName().str() + "' may not return a value on all code paths", 2, true, true, "");
         }
 
         for (const auto& var : localVars) {

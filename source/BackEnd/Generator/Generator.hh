@@ -74,6 +74,7 @@ public:
 
     void BuildLLVM();
     void PrintLLVM();
+    void CompileTimeGarbageCollection();
     void ValidateModule(bool EmitWarnings);
     void OptimiseLLVM();
     void CompileTriple(std::string Triple);
