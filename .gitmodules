@@ -1,6 +1,3 @@
 [submodule "AeroIR"]
 	path = AeroIR
 	url = https://github.com/EncodedTerabyte/AeroIR
-[submodule "source/BackEnd/Generator/AeroIR"]
-	path = source/BackEnd/Generator/AeroIR
-	url = https://github.com/EncodedTerabyte/AeroIR
