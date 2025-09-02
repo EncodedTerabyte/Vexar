@@ -1,7 +1,7 @@
 #include "UnaryOpGenerator.hh" 
 #include "ExpressionGenerator.hh" 
  
-llvm::Value* GenerateUnaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateUnaryOp(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, FunctionSymbols& Methods) {
     auto* UnaryNode = static_cast<UnaryOpNode*>(Expr.get());
     if (!UnaryNode) {
         return nullptr;
@@ -16,29 +16,35 @@ llvm::Value* GenerateUnaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuild
         }
         
         auto* IdentNode = static_cast<IdentifierNode*>(UnaryNode->operand.get());
-        llvm::AllocaInst* VarAlloca = FindInScopes(SymbolStack, IdentNode->name);
-        if (!VarAlloca) {
+        llvm::Value* VarPtr = IR->getVar(IdentNode->name);
+        if (!VarPtr) {
             Write("Unary Op Generation", "Undefined variable: " + IdentNode->name + Location, 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* CurrentValue = Builder.CreateLoad(VarAlloca->getAllocatedType(), VarAlloca);
+        llvm::Value* CurrentValue = IR->load(VarPtr);
         llvm::Value* One = nullptr;
+        llvm::Value* NewValue = nullptr;
         
         if (CurrentValue->getType()->isFloatingPointTy()) {
-            One = llvm::ConstantFP::get(CurrentValue->getType(), 1.0);
-            llvm::Value* NewValue = Builder.CreateFAdd(CurrentValue, One);
-            Builder.CreateStore(NewValue, VarAlloca);
-            return NewValue;
+            One = IR->constF64(1.0);
+            if (CurrentValue->getType()->isFloatTy()) {
+                One = IR->constF32(1.0f);
+            }
+            NewValue = IR->add(CurrentValue, One);
         } else if (CurrentValue->getType()->isIntegerTy()) {
-            One = llvm::ConstantInt::get(CurrentValue->getType(), 1);
-            llvm::Value* NewValue = Builder.CreateAdd(CurrentValue, One);
-            Builder.CreateStore(NewValue, VarAlloca);
-            return NewValue;
+            One = IR->constI32(1);
+            if (CurrentValue->getType()->isIntegerTy(64)) {
+                One = IR->constI64(1);
+            }
+            NewValue = IR->add(CurrentValue, One);
         } else {
             Write("Unary Op Generation", "Increment operator not supported for this type" + Location, 2, true, true, "");
             return nullptr;
         }
+        
+        IR->store(NewValue, VarPtr);
+        return NewValue;
     }
     
     if (UnaryNode->op == "--") {
@@ -48,66 +54,69 @@ llvm::Value* GenerateUnaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuild
         }
         
         auto* IdentNode = static_cast<IdentifierNode*>(UnaryNode->operand.get());
-        llvm::AllocaInst* VarAlloca = FindInScopes(SymbolStack, IdentNode->name);
-        if (!VarAlloca) {
+        llvm::Value* VarPtr = IR->getVar(IdentNode->name);
+        if (!VarPtr) {
             Write("Unary Op Generation", "Undefined variable: " + IdentNode->name + Location, 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* CurrentValue = Builder.CreateLoad(VarAlloca->getAllocatedType(), VarAlloca);
+        llvm::Value* CurrentValue = IR->load(VarPtr);
         llvm::Value* One = nullptr;
+        llvm::Value* NewValue = nullptr;
         
         if (CurrentValue->getType()->isFloatingPointTy()) {
-            One = llvm::ConstantFP::get(CurrentValue->getType(), 1.0);
-            llvm::Value* NewValue = Builder.CreateFSub(CurrentValue, One);
-            Builder.CreateStore(NewValue, VarAlloca);
-            return NewValue;
+            One = IR->constF64(1.0);
+            if (CurrentValue->getType()->isFloatTy()) {
+                One = IR->constF32(1.0f);
+            }
+            NewValue = IR->sub(CurrentValue, One);
         } else if (CurrentValue->getType()->isIntegerTy()) {
-            One = llvm::ConstantInt::get(CurrentValue->getType(), 1);
-            llvm::Value* NewValue = Builder.CreateSub(CurrentValue, One);
-            Builder.CreateStore(NewValue, VarAlloca);
-            return NewValue;
+            One = IR->constI32(1);
+            if (CurrentValue->getType()->isIntegerTy(64)) {
+                One = IR->constI64(1);
+            }
+            NewValue = IR->sub(CurrentValue, One);
         } else {
             Write("Unary Op Generation", "Decrement operator not supported for this type" + Location, 2, true, true, "");
             return nullptr;
         }
+        
+        IR->store(NewValue, VarPtr);
+        return NewValue;
     }
     
     if (UnaryNode->op == "-") {
-        llvm::Value* Operand = GenerateExpression(UnaryNode->operand, Builder, SymbolStack, Methods);
+        llvm::Value* Operand = GenerateExpression(UnaryNode->operand, IR, Methods);
         if (!Operand) {
             Write("Unary Op Generation", "Invalid operand for unary minus" + Location, 2, true, true, "");
             return nullptr;
         }
         
-        if (Operand->getType()->isFloatingPointTy()) {
-            return Builder.CreateFNeg(Operand);
-        } else if (Operand->getType()->isIntegerTy()) {
-            return Builder.CreateNeg(Operand);
-        } else {
-            Write("Unary Op Generation", "Unary minus not supported for this type" + Location, 2, true, true, "");
-            return nullptr;
-        }
+        return IR->neg(Operand);
     }
     
     if (UnaryNode->op == "!") {
-        llvm::Value* Operand = GenerateExpression(UnaryNode->operand, Builder, SymbolStack, Methods);
+        llvm::Value* Operand = GenerateExpression(UnaryNode->operand, IR, Methods);
         if (!Operand) {
             Write("Unary Op Generation", "Invalid operand for logical not" + Location, 2, true, true, "");
             return nullptr;
         }
         
         if (Operand->getType()->isIntegerTy(1)) {
-            return Builder.CreateNot(Operand);
+            return IR->not_(Operand);
         } else {
             if (Operand->getType()->isFloatingPointTy()) {
-                llvm::Value* Zero = llvm::ConstantFP::get(Operand->getType(), 0.0);
-                llvm::Value* IsZero = Builder.CreateFCmpOEQ(Operand, Zero);
-                return IsZero;
+                llvm::Value* Zero = IR->constF64(0.0);
+                if (Operand->getType()->isFloatTy()) {
+                    Zero = IR->constF32(0.0f);
+                }
+                return IR->eq(Operand, Zero);
             } else if (Operand->getType()->isIntegerTy()) {
-                llvm::Value* Zero = llvm::ConstantInt::get(Operand->getType(), 0);
-                llvm::Value* IsZero = Builder.CreateICmpEQ(Operand, Zero);
-                return IsZero;
+                llvm::Value* Zero = IR->constI32(0);
+                if (Operand->getType()->isIntegerTy(64)) {
+                    Zero = IR->constI64(0);
+                }
+                return IR->eq(Operand, Zero);
             } else {
                 Write("Unary Op Generation", "Logical not not supported for this type" + Location, 2, true, true, "");
                 return nullptr;

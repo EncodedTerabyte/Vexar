@@ -1,7 +1,8 @@
 #pragma once
 
+#include "AeroIR/source/AeroIR.hh"
 #include "LLVMHeader.hh"
-#include "Helper/Mapping.hh"
+#include "Helper/Types.hh"
 
 struct GL_ASTPackage {
     fs::path InputFile;
@@ -32,34 +33,34 @@ private:
 
     struct CompilerInstance {
         FunctionSymbols FSymbolTable;
-        AllocaSymbols ASymbolTable;
-        std::unique_ptr<llvm::Module> IModule;
-        llvm::LLVMContext IContext;
-        llvm::IRBuilder<> IBuilder;
-        
+        std::unique_ptr<AeroIR> IR;
         std::unique_ptr<ProgramNode> ASTRoot;
         FunctionNode MainFunc;
         
-        CompilerInstance() : IBuilder(IContext) {}
+        CompilerInstance() {}
     };
 
     CompilerInstance CInstance;
     ASTPackage ASTPkg;
 public:
     llvm::Module* GetModulePtr() {
-        return this->CInstance.IModule.get();
+        return this->CInstance.IR->getModule();
     }
 
     std::unique_ptr<llvm::Module> TakeModule() {
-        return std::move(this->CInstance.IModule);
+        return std::unique_ptr<llvm::Module>(this->CInstance.IR->getModule());
     }
 
     llvm::LLVMContext& GetContext() {
-        return this->CInstance.IContext;
+        return *this->CInstance.IR->getContext();
     }
 
     llvm::IRBuilder<>& GetBuilder() {
-        return this->CInstance.IBuilder;
+        return *this->CInstance.IR->getBuilder();
+    }
+
+    AeroIR* GetIR() {
+        return this->CInstance.IR.get();
     }
 
     ProgramNode* GetASTRoot() {
@@ -74,10 +75,5 @@ public:
 
     void BuildLLVM();
     void PrintLLVM();
-    void CompileTimeGarbageCollection();
-    void ValidateModule(bool EmitWarnings);
-    void OptimiseLLVM();
     void CompileTriple(std::string Triple);
-    void Link(fs::path ObjectFile);
-
 };

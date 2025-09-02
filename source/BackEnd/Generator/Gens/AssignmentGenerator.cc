@@ -1,14 +1,14 @@
 #include "AssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, AeroIR* IR, FunctionSymbols& Methods) {
     std::string StmtLocation = " at line " + std::to_string(Assign->token.line) + ", column " + std::to_string(Assign->token.column);
     if (!Assign) {
         Write("Block Generator", "Failed to cast to AssignmentOpNode" + StmtLocation, 2, true, true, "");
         return nullptr;
     }
     
-    llvm::Value* rvalue = GenerateExpression(Assign->right, Builder, SymbolStack, Methods);
+    llvm::Value* rvalue = GenerateExpression(Assign->right, IR, Methods);
     if (!rvalue) {
         Write("Block Generator", "Invalid assignment value expression" + StmtLocation, 2, true, true, "");
         return nullptr;
@@ -17,15 +17,7 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
     if (Assign->left->type == NodeType::ArrayAccess) {
         auto* ArrayAccess = static_cast<ArrayAccessNode*>(Assign->left.get());
         
-        llvm::Value* arrayPtr = nullptr;
-        for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-            auto found = it->find(ArrayAccess->identifier);
-            if (found != it->end()) {
-                arrayPtr = found->second;
-                break;
-            }
-        }
-        
+        llvm::Value* arrayPtr = IR->getVar(ArrayAccess->identifier);
         if (!arrayPtr) {
             Write("Block Generator", "Undefined array identifier: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
             return nullptr;
@@ -40,8 +32,8 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
         llvm::Type* allocatedType = allocaInst->getAllocatedType();
         
         if (allocatedType->isPointerTy()) {
-            llvm::Value* heapArrayPtr = Builder.CreateLoad(allocatedType, allocaInst);
-            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+            llvm::Value* heapArrayPtr = IR->load(allocaInst);
+            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, IR, Methods);
             
             if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                 Write("Block Generator", "Invalid array index in heap array assignment" + StmtLocation, 2, true, true, "");
@@ -51,22 +43,22 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             llvm::Type* elementType = allocatedType;
             if (rvalue->getType() != elementType) {
                 if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                    rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateFPToSI(rvalue, elementType);
                 } else if (elementType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateTrunc(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateTrunc(rvalue, elementType);
                 } else if (elementType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
-                    rvalue = Builder.CreateZExt(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateZExt(rvalue, elementType);
                 } else if (elementType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, elementType);
                     } else if (rvalue->getType()->isDoubleTy()) {
-                        rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                        rvalue = IR->floatCast(rvalue, elementType);
                     }
                 } else if (elementType->isDoubleTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, elementType);
                     } else if (rvalue->getType()->isFloatTy()) {
-                        rvalue = Builder.CreateFPExt(rvalue, elementType);
+                        rvalue = IR->floatCast(rvalue, elementType);
                     }
                 } else {
                     Write("Block Generator", "Type mismatch in heap array assignment" + StmtLocation, 2, true, true, "");
@@ -74,19 +66,19 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
                 }
             }
             
-            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(elementType, heapArrayPtr, indexValue);
-            Builder.CreateStore(rvalue, elementPtr);
+            llvm::Value* elementPtr = IR->arrayAccess(heapArrayPtr, indexValue);
+            IR->store(rvalue, elementPtr);
             return rvalue;
         }
         
         if (ArrayAccess->expr->type == NodeType::Array) {
             auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAccess->expr.get());
             std::vector<llvm::Value*> indices;
-            indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+            indices.push_back(IR->constI32(0));
             
             llvm::Type* currentType = allocatedType;
             for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
-                llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+                llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], IR, Methods);
                 if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                     Write("Block Generator", "Invalid array index in assignment" + StmtLocation, 2, true, true, "");
                     return nullptr;
@@ -118,22 +110,22 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             
             if (rvalue->getType() != currentType) {
                 if (currentType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                    rvalue = Builder.CreateFPToSI(rvalue, currentType);
+                    rvalue = IR->getBuilder()->CreateFPToSI(rvalue, currentType);
                 } else if (currentType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateTrunc(rvalue, currentType);
+                    rvalue = IR->getBuilder()->CreateTrunc(rvalue, currentType);
                 } else if (currentType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
-                    rvalue = Builder.CreateZExt(rvalue, currentType);
+                    rvalue = IR->getBuilder()->CreateZExt(rvalue, currentType);
                 } else if (currentType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, currentType);
                     } else if (rvalue->getType()->isDoubleTy()) {
-                        rvalue = Builder.CreateFPTrunc(rvalue, currentType);
+                        rvalue = IR->floatCast(rvalue, currentType);
                     }
                 } else if (currentType->isDoubleTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, currentType);
                     } else if (rvalue->getType()->isFloatTy()) {
-                        rvalue = Builder.CreateFPExt(rvalue, currentType);
+                        rvalue = IR->floatCast(rvalue, currentType);
                     }
                 } else {
                     Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
@@ -141,11 +133,11 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
                 }
             }
             
-            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
-            Builder.CreateStore(rvalue, elementPtr);
+            llvm::Value* elementPtr = IR->getBuilder()->CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+            IR->store(rvalue, elementPtr);
             return rvalue;
         } else {
-            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, IR, Methods);
             if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                 Write("Block Generator", "Invalid array index in assignment" + StmtLocation, 2, true, true, "");
                 return nullptr;
@@ -174,22 +166,22 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             llvm::Type* elementType = arrayType->getElementType();
             if (rvalue->getType() != elementType) {
                 if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                    rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateFPToSI(rvalue, elementType);
                 } else if (elementType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateTrunc(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateTrunc(rvalue, elementType);
                 } else if (elementType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
-                    rvalue = Builder.CreateZExt(rvalue, elementType);
+                    rvalue = IR->getBuilder()->CreateZExt(rvalue, elementType);
                 } else if (elementType->isFloatTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, elementType);
                     } else if (rvalue->getType()->isDoubleTy()) {
-                        rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                        rvalue = IR->floatCast(rvalue, elementType);
                     }
                 } else if (elementType->isDoubleTy()) {
                     if (rvalue->getType()->isIntegerTy()) {
-                        rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                        rvalue = IR->getBuilder()->CreateSIToFP(rvalue, elementType);
                     } else if (rvalue->getType()->isFloatTy()) {
-                        rvalue = Builder.CreateFPExt(rvalue, elementType);
+                        rvalue = IR->floatCast(rvalue, elementType);
                     }
                 } else {
                     Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
@@ -197,27 +189,14 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
                 }
             }
             
-            std::vector<llvm::Value*> indices = {
-                llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
-                indexValue
-            };
-            
-            llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
-            Builder.CreateStore(rvalue, elementPtr);
+            llvm::Value* elementPtr = IR->arrayAccess(arrayPtr, indexValue);
+            IR->store(rvalue, elementPtr);
             return rvalue;
         }
     } else if (Assign->left->type == NodeType::Identifier) {
         auto* Ident = static_cast<IdentifierNode*>(Assign->left.get());
         
-        llvm::Value* varPtr = nullptr;
-        for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-            auto found = it->find(Ident->name);
-            if (found != it->end()) {
-                varPtr = found->second;
-                break;
-            }
-        }
-        
+        llvm::Value* varPtr = IR->getVar(Ident->name);
         if (!varPtr) {
             Write("Block Generator", "Undefined variable: " + Ident->name + StmtLocation, 2, true, true, "");
             return nullptr;
@@ -232,22 +211,22 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
         llvm::Type* varType = allocaInst->getAllocatedType();
         if (rvalue->getType() != varType) {
             if (varType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                rvalue = Builder.CreateFPToSI(rvalue, varType);
+                rvalue = IR->getBuilder()->CreateFPToSI(rvalue, varType);
             } else if (varType->isIntegerTy(1) && rvalue->getType()->isIntegerTy()) {
-                rvalue = Builder.CreateTrunc(rvalue, varType);
+                rvalue = IR->getBuilder()->CreateTrunc(rvalue, varType);
             } else if (varType->isIntegerTy() && rvalue->getType()->isIntegerTy(1)) {
-                rvalue = Builder.CreateZExt(rvalue, varType);
+                rvalue = IR->getBuilder()->CreateZExt(rvalue, varType);
             } else if (varType->isFloatTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, varType);
+                    rvalue = IR->getBuilder()->CreateSIToFP(rvalue, varType);
                 } else if (rvalue->getType()->isDoubleTy()) {
-                    rvalue = Builder.CreateFPTrunc(rvalue, varType);
+                    rvalue = IR->floatCast(rvalue, varType);
                 }
             } else if (varType->isDoubleTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, varType);
+                    rvalue = IR->getBuilder()->CreateSIToFP(rvalue, varType);
                 } else if (rvalue->getType()->isFloatTy()) {
-                    rvalue = Builder.CreateFPExt(rvalue, varType);
+                    rvalue = IR->floatCast(rvalue, varType);
                 }
             } else {
                 Write("Block Generator", "Type mismatch in variable assignment" + StmtLocation, 2, true, true, "");
@@ -255,7 +234,7 @@ llvm::Value* GenerateAssignment(AssignmentOpNode* Assign, llvm::IRBuilder<>& Bui
             }
         }
         
-        Builder.CreateStore(rvalue, allocaInst);
+        IR->store(rvalue, allocaInst);
         return rvalue;
     } else {
         Write("Block Generator", "Invalid assignment target" + StmtLocation, 2, true, true, "");

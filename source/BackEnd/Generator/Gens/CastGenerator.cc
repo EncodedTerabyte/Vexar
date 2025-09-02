@@ -1,7 +1,7 @@
 #include "CastGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateCast(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateCast(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Expr) {
         Write("Cast Generation", "Null ASTNode pointer", 2, true, true, "");
         return nullptr;
@@ -15,7 +15,7 @@ llvm::Value* GenerateCast(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<
         return nullptr;
     }
 
-    llvm::Value* ExprValue = GenerateExpression(CastNodePtr->expr, Builder, SymbolStack, Methods);
+    llvm::Value* ExprValue = GenerateExpression(CastNodePtr->expr, IR, Methods);
     if (!ExprValue) {
         Write("Cast Generation", "Invalid expression for cast" + Location, 2, true, true, "");
         return nullptr;
@@ -23,17 +23,17 @@ llvm::Value* GenerateCast(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<
     
     llvm::Type* TargetType = nullptr;
     if (CastNodePtr->targetType == "int") {
-        TargetType = llvm::Type::getInt32Ty(Builder.getContext());
+        TargetType = IR->int_t();
     } else if (CastNodePtr->targetType == "float") {
-        TargetType = llvm::Type::getFloatTy(Builder.getContext());
+        TargetType = IR->float_t();
     } else if (CastNodePtr->targetType == "double") {
-        TargetType = llvm::Type::getDoubleTy(Builder.getContext());
+        TargetType = IR->double_t();
     } else if (CastNodePtr->targetType == "char") {
-        TargetType = llvm::Type::getInt8Ty(Builder.getContext());
+        TargetType = IR->char_t();
     } else if (CastNodePtr->targetType == "bool") {
-        TargetType = llvm::Type::getInt1Ty(Builder.getContext());
+        TargetType = IR->bool_t();
     } else if (CastNodePtr->targetType == "string") {
-        TargetType = llvm::PointerType::get(Builder.getContext(), 0);
+        TargetType = IR->string_t();
     } else {
         Write("Cast Generation", "Unsupported target type: " + CastNodePtr->targetType + Location, 2, true, true, "");
         return nullptr;
@@ -49,158 +49,89 @@ llvm::Value* GenerateCast(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<
     
     if (SourceType->isIntegerTy() && TargetType->isIntegerTy()) {
         if (SourceType->getIntegerBitWidth() < TargetType->getIntegerBitWidth()) {
-            llvm::Value* Result = Builder.CreateSExt(ExprValue, TargetType);
-            return Result;
+            return IR->intCast(ExprValue, TargetType);
         } else if (SourceType->getIntegerBitWidth() > TargetType->getIntegerBitWidth()) {
-            llvm::Value* Result = Builder.CreateTrunc(ExprValue, TargetType);
-            return Result;
+            return IR->intCast(ExprValue, TargetType);
         }
     } else if (SourceType->isIntegerTy() && TargetType->isFloatingPointTy()) {
-        llvm::Value* Result = Builder.CreateSIToFP(ExprValue, TargetType);
-        return Result;
+        return IR->getBuilder()->CreateSIToFP(ExprValue, TargetType);
     } else if (SourceType->isFloatingPointTy() && TargetType->isIntegerTy()) {
-        llvm::Value* Result = Builder.CreateFPToSI(ExprValue, TargetType);
-        return Result;
+        return IR->getBuilder()->CreateFPToSI(ExprValue, TargetType);
     } else if (SourceType->isFloatingPointTy() && TargetType->isFloatingPointTy()) {
         if (SourceType->isFloatTy() && TargetType->isDoubleTy()) {
-            llvm::Value* Result = Builder.CreateFPExt(ExprValue, TargetType);
-            return Result;
+            return IR->floatCast(ExprValue, TargetType);
         } else if (SourceType->isDoubleTy() && TargetType->isFloatTy()) {
-            llvm::Value* Result = Builder.CreateFPTrunc(ExprValue, TargetType);
-            return Result;
+            return IR->floatCast(ExprValue, TargetType);
         }
     } else if (SourceType->isIntegerTy(8) && TargetType->isPointerTy()) {
-        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-        if (!mallocFunc) {
-            std::vector<llvm::Type*> mallocArgs = {llvm::Type::getInt64Ty(Builder.getContext())};
-            llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                llvm::PointerType::get(Builder.getContext(), 0),
-                mallocArgs,
-                false
-            );
-            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", 
-                                               Builder.GetInsertBlock()->getParent()->getParent());
-        }
-        llvm::Value* charPtr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 2)});
+        llvm::Value* charPtr = IR->malloc(IR->i8(), IR->constI64(2));
         if (!charPtr) {
             Write("Cast Generation", "Failed to allocate memory for char to string cast" + Location, 2, true, true, "");
             return nullptr;
         }
-        Builder.CreateStore(ExprValue, charPtr);
-        llvm::Value* nullPtr = Builder.CreateGEP(llvm::Type::getInt8Ty(Builder.getContext()), charPtr, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 1));
-        Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), nullPtr);
+        IR->store(ExprValue, charPtr);
+        llvm::Value* nullPtr = IR->getBuilder()->CreateGEP(IR->i8(), charPtr, IR->constI64(1));
+        IR->store(IR->constI8(0), nullPtr);
         return charPtr;
     } else if (SourceType->isPointerTy() && TargetType->isIntegerTy()) {
-        llvm::Value* firstChar = Builder.CreateLoad(llvm::Type::getInt8Ty(Builder.getContext()), ExprValue);
+        llvm::Value* firstChar = IR->load(ExprValue);
         if (TargetType->isIntegerTy(32)) {
-            llvm::Value* Result = Builder.CreateSExt(firstChar, TargetType);
-            return Result;
+            return IR->intCast(firstChar, TargetType);
         } else if (TargetType->isIntegerTy(8)) {
             return firstChar;
         } else {
-            llvm::Value* Result = Builder.CreateSExt(firstChar, TargetType);
-            return Result;
+            return IR->intCast(firstChar, TargetType);
         }
     } else if (SourceType->isPointerTy() && TargetType->isFloatingPointTy()) {
-        llvm::Function* strtodFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strtod");
+        llvm::Function* strtodFunc = IR->getRegisteredBuiltin("strtod");
         if (!strtodFunc) {
-            std::vector<llvm::Type*> strtodArgs = {
-                llvm::PointerType::get(Builder.getContext(), 0),
-                llvm::PointerType::get(Builder.getContext(), 0)
-            };
-            llvm::FunctionType* strtodType = llvm::FunctionType::get(
-                llvm::Type::getDoubleTy(Builder.getContext()),
-                strtodArgs,
-                false
-            );
-            strtodFunc = llvm::Function::Create(strtodType, llvm::Function::ExternalLinkage, "strtod", 
-                                               Builder.GetInsertBlock()->getParent()->getParent());
+            std::vector<llvm::Type*> strtodArgs = {IR->string_t(), IR->ptr(IR->string_t())};
+            strtodFunc = IR->createBuiltinFunction("strtod", IR->double_t(), strtodArgs);
         }
-        llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::PointerType::get(Builder.getContext(), 0));
-        llvm::Value* doubleResult = Builder.CreateCall(strtodFunc, {ExprValue, nullPtr});
+        llvm::Value* nullPtr = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(IR->ptr(IR->string_t())));
+        llvm::Value* doubleResult = IR->call(strtodFunc, {ExprValue, nullPtr});
         
         if (TargetType->isFloatTy()) {
-            llvm::Value* Result = Builder.CreateFPTrunc(doubleResult, TargetType);
-            return Result;
+            return IR->floatCast(doubleResult, TargetType);
         } else {
             return doubleResult;
         }
     } else if (SourceType->isIntegerTy() && TargetType->isPointerTy()) {
-        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-        if (!mallocFunc) {
-            std::vector<llvm::Type*> mallocArgs = {llvm::Type::getInt64Ty(Builder.getContext())};
-            llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                llvm::PointerType::get(Builder.getContext(), 0),
-                mallocArgs,
-                false
-            );
-            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", 
-                                               Builder.GetInsertBlock()->getParent()->getParent());
-        }
-
-        llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
-        if (!sprintfFunc) {
-            std::vector<llvm::Type*> sprintfArgs = {
-                llvm::PointerType::get(Builder.getContext(), 0),
-                llvm::PointerType::get(Builder.getContext(), 0)
-            };
-            llvm::FunctionType* sprintfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                sprintfArgs,
-                true
-            );
-            sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", 
-                                                Builder.GetInsertBlock()->getParent()->getParent());
-        }
-
-        llvm::Value* bufferPtr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
+        llvm::Value* bufferPtr = IR->malloc(IR->i8(), IR->constI64(32));
         if (!bufferPtr) {
             Write("Cast Generation", "Failed to allocate memory for integer to string cast" + Location, 2, true, true, "");
             return nullptr;
         }
-        llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
-        Builder.CreateCall(sprintfFunc, {bufferPtr, formatStr, ExprValue});
+
+        llvm::Function* sprintfFunc = IR->getRegisteredBuiltin("sprintf");
+        if (!sprintfFunc) {
+            std::vector<llvm::Type*> sprintfArgs = {IR->string_t(), IR->string_t()};
+            sprintfFunc = IR->createBuiltinFunction("sprintf", IR->i32(), sprintfArgs);
+        }
+
+        llvm::Value* formatStr = IR->constString("%d");
+        IR->call(sprintfFunc, {bufferPtr, formatStr, ExprValue});
         return bufferPtr;
     } else if (SourceType->isFloatingPointTy() && TargetType->isPointerTy()) {
-        llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-        if (!mallocFunc) {
-            std::vector<llvm::Type*> mallocArgs = {llvm::Type::getInt64Ty(Builder.getContext())};
-            llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                llvm::PointerType::get(Builder.getContext(), 0),
-                mallocArgs,
-                false
-            );
-            mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", 
-                                               Builder.GetInsertBlock()->getParent()->getParent());
-        }
-
-        llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
-        if (!sprintfFunc) {
-            std::vector<llvm::Type*> sprintfArgs = {
-                llvm::PointerType::get(Builder.getContext(), 0),
-                llvm::PointerType::get(Builder.getContext(), 0)
-            };
-            llvm::FunctionType* sprintfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                sprintfArgs,
-                true
-            );
-            sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", 
-                                                Builder.GetInsertBlock()->getParent()->getParent());
-        }
-
-        llvm::Value* bufferPtr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
+        llvm::Value* bufferPtr = IR->malloc(IR->i8(), IR->constI64(32));
         if (!bufferPtr) {
             Write("Cast Generation", "Failed to allocate memory for floating-point to string cast" + Location, 2, true, true, "");
             return nullptr;
         }
-        llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_to_str_fmt");
+
+        llvm::Function* sprintfFunc = IR->getRegisteredBuiltin("sprintf");
+        if (!sprintfFunc) {
+            std::vector<llvm::Type*> sprintfArgs = {IR->string_t(), IR->string_t()};
+            sprintfFunc = IR->createBuiltinFunction("sprintf", IR->i32(), sprintfArgs);
+        }
+
+        llvm::Value* formatStr = IR->constString("%.6f");
         
         if (ExprValue->getType()->isFloatTy()) {
-            ExprValue = Builder.CreateFPExt(ExprValue, llvm::Type::getDoubleTy(Builder.getContext()));
+            ExprValue = IR->floatCast(ExprValue, IR->double_t());
         }
         
-        Builder.CreateCall(sprintfFunc, {bufferPtr, formatStr, ExprValue});
+        IR->call(sprintfFunc, {bufferPtr, formatStr, ExprValue});
         return bufferPtr;
     }
     

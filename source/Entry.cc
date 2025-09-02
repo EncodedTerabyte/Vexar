@@ -86,10 +86,7 @@ int main(int argc, char* argv[]) {
 
     Generator Gen(pkg);
     Gen.BuildLLVM();
-    Gen.CompileTimeGarbageCollection();
-    Gen.ValidateModule(Instructions->EmitWarnings);
-    Gen.OptimiseLLVM();
-    //Gen.PrintLLVM();
+    Gen.PrintLLVM();
     Gen.CompileTriple(Instructions->CompilerTarget);
     //Gen.BuildExecutable();
 

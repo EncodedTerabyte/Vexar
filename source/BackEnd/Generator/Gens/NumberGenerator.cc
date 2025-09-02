@@ -1,6 +1,6 @@
 #include "NumberGenerator.hh"
 
-llvm::Value* GenerateNumber(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateNumber(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Expr) {
         Write("NumberGenerator", "Null ASTNode pointer", 2, true, true, "");
         return nullptr;
@@ -19,9 +19,9 @@ llvm::Value* GenerateNumber(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilde
         
         if (value == floor(value) && value >= INT32_MIN && value <= INT32_MAX) {
             int32_t intValue = static_cast<int32_t>(value);
-            return llvm::ConstantInt::get(llvm::Type::getInt32Ty(Builder.getContext()), intValue, true);
+            return IR->constI32(intValue);
         } else {
-            return llvm::ConstantFP::get(llvm::Type::getFloatTy(Builder.getContext()), static_cast<float>(value));
+            return IR->constF32(static_cast<float>(value));
         }
     } catch (const std::exception& e) {
         Write("NumberGenerator", "Exception during number generation: " + std::string(e.what()) + Location, 2, true, true, "");

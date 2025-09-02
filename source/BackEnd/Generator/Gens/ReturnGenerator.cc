@@ -1,7 +1,7 @@
+#include "UnaryAssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
-#include "ReturnGenerator.hh"
 
-llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) { 
+llvm::Value* GenerateReturn(const ReturnNode* Ret, AeroIR* IR, FunctionSymbols& Methods) { 
     if (!Ret) {
         Write("Return Generator", "Null ReturnNode pointer", 2, true, true, "");
         return nullptr;
@@ -12,13 +12,13 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
     llvm::Value* Value = nullptr;
     
     if (Ret->value) {
-        Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
+        Value = GenerateExpression(Ret->value, IR, Methods);
         if (!Value) {
             return nullptr;
         }
     }
     
-    llvm::Function* CurrentFunc = Builder.GetInsertBlock()->getParent();
+    llvm::Function* CurrentFunc = IR->getBuilder()->GetInsertBlock()->getParent();
     if (!CurrentFunc) {
         Write("Return Generator", "Invalid current function for return statement" + StmtLocation, 2, true, true, "");
         return nullptr;
@@ -29,33 +29,33 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
     if (Value) {
         if (Value->getType() != ReturnType) {
             if (ReturnType->isIntegerTy(1) && Value->getType()->isIntegerTy()) {
-                Value = Builder.CreateICmpNE(Value, llvm::ConstantInt::get(Value->getType(), 0), "tobool");
+                Value = IR->getBuilder()->CreateICmpNE(Value, llvm::ConstantInt::get(Value->getType(), 0), "tobool");
             }
             else if (ReturnType->isIntegerTy(1) && Value->getType()->isFloatingPointTy()) {
-                Value = Builder.CreateFCmpONE(Value, llvm::ConstantFP::get(Value->getType(), 0.0), "tobool");
+                Value = IR->getBuilder()->CreateFCmpONE(Value, llvm::ConstantFP::get(Value->getType(), 0.0), "tobool");
             }
             else if (ReturnType->isIntegerTy() && Value->getType()->isIntegerTy(1)) {
-                Value = Builder.CreateZExt(Value, ReturnType, "frombool");
+                Value = IR->getBuilder()->CreateZExt(Value, ReturnType, "frombool");
             }
             else if (ReturnType->isIntegerTy() && Value->getType()->isIntegerTy() && 
                      ReturnType->getIntegerBitWidth() != Value->getType()->getIntegerBitWidth()) {
                 if (ReturnType->getIntegerBitWidth() > Value->getType()->getIntegerBitWidth()) {
-                    Value = Builder.CreateSExt(Value, ReturnType, "sext");
+                    Value = IR->getBuilder()->CreateSExt(Value, ReturnType, "sext");
                 } else {
-                    Value = Builder.CreateTrunc(Value, ReturnType, "trunc");
+                    Value = IR->getBuilder()->CreateTrunc(Value, ReturnType, "trunc");
                 }
             }
             else if (ReturnType->isFloatingPointTy() && Value->getType()->isIntegerTy()) {
-                Value = Builder.CreateSIToFP(Value, ReturnType, "sitofp");
+                Value = IR->getBuilder()->CreateSIToFP(Value, ReturnType, "sitofp");
             }
             else if (ReturnType->isIntegerTy() && Value->getType()->isFloatingPointTy()) {
-                Value = Builder.CreateFPToSI(Value, ReturnType, "fptosi");
+                Value = IR->getBuilder()->CreateFPToSI(Value, ReturnType, "fptosi");
             }
             else if (ReturnType->isFloatingPointTy() && Value->getType()->isFloatingPointTy()) {
                 if (ReturnType->isDoubleTy() && Value->getType()->isFloatTy()) {
-                    Value = Builder.CreateFPExt(Value, ReturnType, "fpext");
+                    Value = IR->getBuilder()->CreateFPExt(Value, ReturnType, "fpext");
                 } else if (ReturnType->isFloatTy() && Value->getType()->isDoubleTy()) {
-                    Value = Builder.CreateFPTrunc(Value, ReturnType, "fptrunc");
+                    Value = IR->getBuilder()->CreateFPTrunc(Value, ReturnType, "fptrunc");
                 }
             }
             else {
@@ -64,23 +64,14 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
             }
         }
         
-        llvm::ReturnInst* RetInst = Builder.CreateRet(Value);
-        if (!RetInst) {
-            Write("Return Generator", "Failed to create return instruction" + StmtLocation, 2, true, true, "");
-            return nullptr;
-        }
-        return Value;
+        return IR->ret(Value);
     } else {
         if (ReturnType->isVoidTy()) {
-            llvm::ReturnInst* RetInst = Builder.CreateRetVoid();
-            if (!RetInst) {
-                Write("Return Generator", "Failed to create void return instruction" + StmtLocation, 2, true, true, "");
-                return nullptr;
-            }
+            return IR->ret(nullptr);
         } else {
             llvm::Value* defaultValue;
             if (ReturnType->isIntegerTy(1)) {
-                defaultValue = llvm::ConstantInt::get(ReturnType, false);
+                defaultValue = IR->constBool(false);
             } else if (ReturnType->isIntegerTy()) {
                 defaultValue = llvm::ConstantInt::get(ReturnType, 0);
             } else if (ReturnType->isFloatingPointTy()) {
@@ -90,12 +81,7 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, llvm::IRBuilder<>& Builder, S
             } else {
                 defaultValue = llvm::UndefValue::get(ReturnType);
             }
-            llvm::ReturnInst* RetInst = Builder.CreateRet(defaultValue);
-            if (!RetInst) {
-                Write("Return Generator", "Failed to create default return instruction" + StmtLocation, 2, true, true, "");
-                return nullptr;
-            }
+            return IR->ret(defaultValue);
         }
-        return nullptr;
     }
 }

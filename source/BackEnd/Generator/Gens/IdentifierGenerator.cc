@@ -1,8 +1,8 @@
 #include "IdentifierGenerator.hh"
 
-llvm::Value* GenerateIdentifier(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateIdentifier(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Expr) {
-        Write("Identifier Generation", "Null ASTNode pointer at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column), 2, true, true, "");
+        Write("Identifier Generation", "Null ASTNode pointer", 2, true, true, "");
         return nullptr;
     }
 
@@ -14,11 +14,10 @@ llvm::Value* GenerateIdentifier(const std::unique_ptr<ASTNode>& Expr, llvm::IRBu
 
     std::string Location = " at line " + std::to_string(Expr->token.line) + ", column " + std::to_string(Expr->token.column);
     
-    llvm::AllocaInst* AllocaInst = FindInScopes(SymbolStack, Identifier->name);
+    llvm::Value* varPtr = IR->getVar(Identifier->name);
     
-    if (AllocaInst) {
-        llvm::Value* LoadInst = Builder.CreateLoad(AllocaInst->getAllocatedType(), AllocaInst, Identifier->name.c_str());
-        return LoadInst;
+    if (varPtr) {
+        return IR->load(varPtr);
     } else {
         Write("Identifier Generation", "Identifier not found: " + Identifier->name + Location, 2, true, true, "");
         return nullptr;
