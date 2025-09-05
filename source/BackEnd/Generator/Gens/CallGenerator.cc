@@ -44,18 +44,7 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
         if (i < FuncType->getNumParams() && FuncType->getParamType(i)->isPointerTy()) {
             if (FuncCallNode->arguments[i]->type == NodeType::Identifier) {
                 auto* IdentNode = static_cast<IdentifierNode*>(FuncCallNode->arguments[i].get());
-<<<<<<< HEAD
-                llvm::Value* arrayPtr = nullptr;
-                for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-                    auto found = it->find(IdentNode->name);
-                    if (found != it->end()) {
-                        arrayPtr = found->second;
-                        break;
-                    }
-                }
-=======
                 llvm::Value* arrayPtr = IR->getVar(IdentNode->name);
->>>>>>> main
                 
                 if (!arrayPtr) {
                     Write("Function Call", "Undefined array identifier: " + IdentNode->name + " in function: " + FuncCallNode->name + Location, 2, true, true, "");
@@ -72,48 +61,6 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                 llvm::Type* expectedParamType = FuncType->getParamType(i);
                 
                 if (allocatedType->isArrayTy()) {
-<<<<<<< HEAD
-                    llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-                    if (!mallocFunc) {
-                        llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                            llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0),
-                            {llvm::Type::getInt64Ty(Builder.getContext())},
-                            false
-                        );
-                        mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-                    }
-                    
-                    llvm::ArrayType* outerArrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
-                    if (outerArrayType && outerArrayType->getElementType()->isArrayTy()) {
-                        llvm::ArrayType* innerArrayType = llvm::dyn_cast<llvm::ArrayType>(outerArrayType->getElementType());
-                        uint64_t outerSize = outerArrayType->getNumElements();
-                        uint64_t innerSize = innerArrayType->getNumElements();
-                        
-                        llvm::Value* outerArraySize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), outerSize * 8);
-                        llvm::Value* heapArrayPtr = Builder.CreateCall(mallocFunc, {outerArraySize});
-                        heapArrayPtr = Builder.CreatePointerCast(heapArrayPtr, llvm::PointerType::get(llvm::PointerType::get(Builder.getInt32Ty(), 0), 0));
-                        
-                        for (uint64_t i = 0; i < outerSize; ++i) {
-                            llvm::Value* innerArraySize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), innerSize * 4);
-                            llvm::Value* innerHeapPtr = Builder.CreateCall(mallocFunc, {innerArraySize});
-                            innerHeapPtr = Builder.CreatePointerCast(innerHeapPtr, llvm::PointerType::get(Builder.getInt32Ty(), 0));
-                            
-                            for (uint64_t j = 0; j < innerSize; ++j) {
-                                std::vector<llvm::Value*> stackIndices = {
-                                    llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
-                                    llvm::ConstantInt::get(Builder.getInt32Ty(), i),
-                                    llvm::ConstantInt::get(Builder.getInt32Ty(), j)
-                                };
-                                llvm::Value* stackElementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, stackIndices);
-                                llvm::Value* stackValue = Builder.CreateLoad(Builder.getInt32Ty(), stackElementPtr);
-                                
-                                llvm::Value* heapElementPtr = Builder.CreateInBoundsGEP(Builder.getInt32Ty(), innerHeapPtr, llvm::ConstantInt::get(Builder.getInt32Ty(), j));
-                                Builder.CreateStore(stackValue, heapElementPtr);
-                            }
-                            
-                            llvm::Value* outerElementPtr = Builder.CreateInBoundsGEP(llvm::PointerType::get(Builder.getInt32Ty(), 0), heapArrayPtr, llvm::ConstantInt::get(Builder.getInt32Ty(), i));
-                            Builder.CreateStore(innerHeapPtr, outerElementPtr);
-=======
                     llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
                     if (!arrayType) {
                         Write("Function Call", "Expected array type" + Location, 2, true, true, "");
@@ -145,38 +92,21 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                             
                             llvm::Value* outerElementPtr = IR->arrayAccess(heapArrayPtr, IR->constI32(i));
                             IR->store(innerHeapPtr, outerElementPtr);
->>>>>>> main
                         }
                         
                         Args.push_back(heapArrayPtr);
                     } else {
-<<<<<<< HEAD
-                        std::vector<llvm::Value*> indices = {
-                            llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
-                            llvm::ConstantInt::get(Builder.getInt32Ty(), 0)
-                        };
-                        llvm::Value* arrayDecayPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
-=======
                         llvm::Value* arrayDecayPtr = IR->arrayAccess(arrayPtr, IR->constI32(0));
->>>>>>> main
                         Args.push_back(arrayDecayPtr);
                     }
                 } else if (allocatedType->isPointerTy()) {
                     if (allocatedType == expectedParamType) {
-<<<<<<< HEAD
-                        llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
-=======
                         llvm::Value* loadedPtr = IR->load(allocaInst);
->>>>>>> main
                         Args.push_back(loadedPtr);
                     } else {
                         llvm::Type* pointedType = allocatedType;
                         if (pointedType->isPointerTy() && expectedParamType->isPointerTy()) {
-<<<<<<< HEAD
-                            llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
-=======
                             llvm::Value* loadedPtr = IR->load(allocaInst);
->>>>>>> main
                             Args.push_back(loadedPtr);
                         } else {
                             Write("Function Call", "Type mismatch for array argument: " + IdentNode->name + " in function: " + FuncCallNode->name + Location, 2, true, true, "");
@@ -188,11 +118,7 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                     return nullptr;
                 }
             } else {
-<<<<<<< HEAD
-                llvm::Value* ArgValue = GenerateExpression(FuncCallNode->arguments[i], Builder, SymbolStack, Methods);
-=======
                 llvm::Value* ArgValue = GenerateExpression(FuncCallNode->arguments[i], IR, Methods);
->>>>>>> main
                 if (!ArgValue) {
                     Write("Function Call", "Invalid argument expression for function: " + FuncCallNode->name + Location, 2, true, true, "");
                     return nullptr;
@@ -200,11 +126,7 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                 Args.push_back(ArgValue);
             }
         } else {
-<<<<<<< HEAD
-            llvm::Value* ArgValue = GenerateExpression(FuncCallNode->arguments[i], Builder, SymbolStack, Methods);
-=======
             llvm::Value* ArgValue = GenerateExpression(FuncCallNode->arguments[i], IR, Methods);
->>>>>>> main
             if (!ArgValue) {
                 Write("Function Call", "Invalid argument expression for function: " + FuncCallNode->name + Location, 2, true, true, "");
                 return nullptr;
@@ -214,15 +136,6 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                 llvm::Type* ExpectedType = FuncType->getParamType(i);
                 if (ArgValue->getType() != ExpectedType) {
                     if (ExpectedType->isIntegerTy(32) && ArgValue->getType()->isFloatingPointTy()) {
-<<<<<<< HEAD
-                        ArgValue = Builder.CreateFPToSI(ArgValue, ExpectedType);
-                    } else if (ExpectedType->isFloatingPointTy() && ArgValue->getType()->isIntegerTy()) {
-                        ArgValue = Builder.CreateSIToFP(ArgValue, ExpectedType);
-                    } else if (ExpectedType->isFloatTy() && ArgValue->getType()->isDoubleTy()) {
-                        ArgValue = Builder.CreateFPTrunc(ArgValue, ExpectedType);
-                    } else if (ExpectedType->isDoubleTy() && ArgValue->getType()->isFloatTy()) {
-                        ArgValue = Builder.CreateFPExt(ArgValue, ExpectedType);
-=======
                         ArgValue = IR->cast(ArgValue, ExpectedType);
                     } else if (ExpectedType->isFloatingPointTy() && ArgValue->getType()->isIntegerTy()) {
                         ArgValue = IR->cast(ArgValue, ExpectedType);
@@ -230,7 +143,6 @@ llvm::Value* GenerateCall(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, Func
                         ArgValue = IR->floatCast(ArgValue, ExpectedType);
                     } else if (ExpectedType->isDoubleTy() && ArgValue->getType()->isFloatTy()) {
                         ArgValue = IR->floatCast(ArgValue, ExpectedType);
->>>>>>> main
                     } else {
                         Write("Function Call", "Type mismatch for argument " + std::to_string(i) + " in function: " + FuncCallNode->name + Location, 2, true, true, "");
                         return nullptr;

@@ -251,6 +251,9 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, 
             
             return result;
         }
+        
+        promoteToCommonType(Left, Right);
+        return IR->add(Left, Right);
     } else if (BinOpNode->op == "-") {
         promoteToCommonType(Left, Right);
         return IR->sub(Left, Right);

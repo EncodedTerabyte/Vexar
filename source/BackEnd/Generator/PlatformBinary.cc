@@ -116,9 +116,8 @@ void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Trip
             Write("Code Generation", "Program interpreted successfully", 3, true, true, "");
         }
         std::filesystem::remove(LLFile);
-        if (Triple == "interpret") {
-            return;
-        }
+        
+        return;
     }
     
     if (Triple == "asm-intel") {

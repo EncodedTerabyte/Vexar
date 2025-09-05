@@ -12,11 +12,7 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, AeroIR* IR, FunctionSymbols& 
     llvm::Value* Value = nullptr;
     
     if (Ret->value) {
-<<<<<<< HEAD
-        Value = GenerateExpression(Ret->value, Builder, SymbolStack, Methods);
-=======
         Value = GenerateExpression(Ret->value, IR, Methods);
->>>>>>> main
         if (!Value) {
             return nullptr;
         }
@@ -68,16 +64,7 @@ llvm::Value* GenerateReturn(const ReturnNode* Ret, AeroIR* IR, FunctionSymbols& 
             }
         }
         
-<<<<<<< HEAD
-        llvm::ReturnInst* RetInst = Builder.CreateRet(Value);
-        if (!RetInst) {
-            Write("Return Generator", "Failed to create return instruction" + StmtLocation, 2, true, true, "");
-            return nullptr;
-        }
-        return Value;
-=======
         return IR->ret(Value);
->>>>>>> main
     } else {
         if (ReturnType->isVoidTy()) {
             return IR->ret(nullptr);

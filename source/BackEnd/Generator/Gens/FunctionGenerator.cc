@@ -1,11 +1,6 @@
 #include "FunctionGenerator.hh"
 #include "BlockGenerator.hh"
 #include "../Helper/Types.hh"
-<<<<<<< HEAD
-#include "../Helper/Mapping.hh"
-#include "GarbageCollector.hh"
-=======
->>>>>>> main
 
 llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Node) {
@@ -17,9 +12,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
     std::string ReturnTypeStr = Node->returnType;
     std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
 
-<<<<<<< HEAD
-    llvm::Type* ReturnType = GetLLVMTypeFromStringWithArrays(ReturnTypeStr, ctx);
-=======
     llvm::Type* ReturnType = nullptr;
     if (ReturnTypeStr.find("[]") != std::string::npos) {
         std::string baseType = ReturnTypeStr.substr(0, ReturnTypeStr.find("[]"));
@@ -33,7 +25,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
         ReturnType = GetAeroTypeFromString(ReturnTypeStr, IR);
     }
     
->>>>>>> main
     if (!ReturnType) {
         Write("Function Generation", "Unknown return type: " + ReturnTypeStr + Location, 2, true, true, "");
         return nullptr;
@@ -42,11 +33,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
     std::vector<llvm::Type*> ArgTypes;
     for (const auto& Arg : Node->params) {
         std::string paramType = std::get<1>(Arg);
-<<<<<<< HEAD
-        int dimensions = std::get<2>(Arg);
-        
-        llvm::Type* ArgType = GetLLVMTypeFromStringWithArrays(paramType, ctx);
-=======
         
         llvm::Type* ArgType = nullptr;
         if (paramType.find("[]") != std::string::npos) {
@@ -61,7 +47,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
             ArgType = GetAeroTypeFromString(paramType, IR);
         }
         
->>>>>>> main
         if (!ArgType) {
             Write("Function Generation", "Unknown argument type: " + paramType + " for function: " + Name + Location, 2, true, true, "");
             return nullptr;
@@ -93,40 +78,14 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
     for (const auto& Arg : Node->params) {
         std::string paramName = std::get<0>(Arg);
         std::string paramType = std::get<1>(Arg);
-<<<<<<< HEAD
-        int dimensions = std::get<2>(Arg);
-        
-        ArgIter->setName(paramName);
-        
-        llvm::AllocaInst* Alloca = Builder.CreateAlloca(ArgIter->getType(), nullptr, paramName + ".addr");
-        if (!Alloca) {
-            Write("Function Generation", "Failed to create alloca for parameter: " + paramName + " in function: " + Name + Location, 2, true, true, "");
-            return nullptr;
-        }
-        Builder.CreateStore(ArgIter, Alloca);
-        LocalScopes.back()[paramName] = Alloca;
-        
-        ++ArgIter;
-=======
         
         llvm::Value* param = IR->param(paramIndex);
         llvm::Value* alloca = IR->var(paramName, param->getType(), param);
         paramIndex++;
->>>>>>> main
     }
 
     GenerateBlock(Node->body, IR, Methods);
 
-<<<<<<< HEAD
-    if (!EntryBlock->getTerminator()) {
-        gc.GenerateScopeCleanup(Builder);
-        
-        if (ReturnType->isVoidTy()) {
-            Builder.CreateRetVoid();
-        } else if (ReturnType->isPointerTy()) {
-            llvm::Value* DefaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
-            Builder.CreateRet(DefaultValue);
-=======
     llvm::BasicBlock* currentBlock = IR->getBuilder()->GetInsertBlock();
     if (!currentBlock->getTerminator()) {
         if (ReturnType->isVoidTy()) {
@@ -134,7 +93,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
         } else if (ReturnType->isPointerTy()) {
             llvm::Value* DefaultValue = llvm::ConstantPointerNull::get(static_cast<llvm::PointerType*>(ReturnType));
             IR->ret(DefaultValue);
->>>>>>> main
         } else {
             llvm::Value* DefaultValue;
             if (ReturnType->isIntegerTy(1)) {

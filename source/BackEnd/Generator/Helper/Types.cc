@@ -121,3 +121,27 @@ llvm::Type* GetLLVMTypeFromStringWithArrays(const std::string& typeStr, llvm::LL
     
     return baseType;
 }
+
+llvm::Type* GetLLVMTypeFromString(const std::string& type, llvm::LLVMContext& context) {
+    if (type == "i8" || type == "char") {
+        return llvm::Type::getInt8Ty(context);
+    } else if (type == "i16" || type == "short") {
+        return llvm::Type::getInt16Ty(context);
+    } else if (type == "i32" || type == "int") {
+        return llvm::Type::getInt32Ty(context);
+    } else if (type == "i64" || type == "long") {
+        return llvm::Type::getInt64Ty(context);
+    } else if (type == "f32" || type == "float") {
+        return llvm::Type::getFloatTy(context);
+    } else if (type == "f64" || type == "double") {
+        return llvm::Type::getDoubleTy(context);
+    } else if (type == "bool" || type == "boolean") {
+        return llvm::Type::getInt1Ty(context);
+    } else if (type == "void") {
+        return llvm::Type::getVoidTy(context);
+    } else if (type == "string" || type == "str") {
+        return llvm::PointerType::get(llvm::Type::getInt8Ty(context), 0);
+    }
+    
+    return nullptr;
+}

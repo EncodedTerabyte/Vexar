@@ -6,9 +6,5 @@
 
 std::string GetStringFromLLVMType(llvm::Type* type);
 llvm::Type* GetLLVMTypeFromString(const std::string& typeName, llvm::LLVMContext& context);
-<<<<<<< HEAD
-llvm::Type* GetLLVMTypeFromStringWithArrays(const std::string& typeStr, llvm::LLVMContext& ctx);
-=======
 llvm::Type* GetLLVMTypeFromStringWithArrays(const std::string& typeStr, llvm::LLVMContext& ctx);
 llvm::Type* GetAeroTypeFromString(const std::string& typeStr, AeroIR* IR);
->>>>>>> main
