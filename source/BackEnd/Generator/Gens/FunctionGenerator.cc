@@ -80,11 +80,7 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
         std::string paramType = std::get<1>(Arg);
         
         llvm::Value* param = IR->param(paramIndex);
-        if (paramType.find("[]") != std::string::npos) {
-            llvm::Value* alloca = IR->var(paramName, param->getType(), param);
-        } else {
-            IR->nameParam(paramIndex, paramName);
-        }
+        llvm::Value* alloca = IR->var(paramName, param->getType(), param);
         paramIndex++;
     }
 

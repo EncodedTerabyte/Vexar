@@ -83,137 +83,174 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, 
     };
 
     if (BinOpNode->op == "+") {
-        if (Left->getType()->isIntegerTy(8) && Right->getType()->isIntegerTy(8)) {
-            llvm::Value* size = IR->constI64(3);
-            llvm::Value* buffer = IR->malloc(IR->i8(), size);
-            
-            llvm::Value* ptr0 = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), buffer, IR->constI32(0));
-            llvm::Value* ptr1 = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), buffer, IR->constI32(1));
-            llvm::Value* ptr2 = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), buffer, IR->constI32(2));
-            
-            IR->store(Left, ptr0);
-            IR->store(Right, ptr1);
-            IR->store(IR->constI8(0), ptr2);
-            
-            return buffer;
-        }
-        
         if (Left->getType()->isPointerTy() && Right->getType()->isPointerTy()) {
-            llvm::Function* strlenFunc = IR->getRegisteredBuiltin("strlen");
-            if (!strlenFunc) {
-                IR->registerBuiltin("strlen", IR->i64(), {IR->i8ptr()});
-                strlenFunc = IR->getRegisteredBuiltin("strlen");
-            }
-
-            llvm::Function* strcpyFunc = IR->getRegisteredBuiltin("strcpy");
-            if (!strcpyFunc) {
-                IR->registerBuiltin("strcpy", IR->i8ptr(), {IR->i8ptr(), IR->i8ptr()});
-                strcpyFunc = IR->getRegisteredBuiltin("strcpy");
-            }
-
-            llvm::Function* strcatFunc = IR->getRegisteredBuiltin("strcat");
-            if (!strcatFunc) {
-                IR->registerBuiltin("strcat", IR->i8ptr(), {IR->i8ptr(), IR->i8ptr()});
-                strcatFunc = IR->getRegisteredBuiltin("strcat");
-            }
-
-            llvm::Value* leftLen = IR->call("strlen", {Left});
-            llvm::Value* rightLen = IR->call("strlen", {Right});
-            llvm::Value* totalLen = IR->add(leftLen, rightLen);
-            llvm::Value* totalLenPlusOne = IR->add(totalLen, IR->constI64(1));
-
-            llvm::Value* resultPtr = IR->malloc(IR->i8(), totalLenPlusOne);
-            if (!resultPtr) {
-                Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
-                return nullptr;
-            }
+            llvm::Value* leftLen = IR->var("left_len", IR->i32(), IR->constI32(0));
+            llvm::Value* tempPtr = Left;
             
-            IR->call("strcpy", {resultPtr, Left});
-            IR->call("strcat", {resultPtr, Right});
+            llvm::BasicBlock* leftLenLoop = IR->createBlock("left_len_loop");
+            llvm::BasicBlock* leftLenDone = IR->createBlock("left_len_done");
+            llvm::BasicBlock* leftLenCheck = IR->createBlock("left_len_check");
             
-            return resultPtr;
+            IR->branch(leftLenLoop);
+            IR->setInsertPoint(leftLenLoop);
+            
+            llvm::Value* currentLeftLen = IR->load(leftLen);
+            llvm::Value* leftCharPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), tempPtr, currentLeftLen);
+            llvm::Value* leftChar = IR->load(leftCharPtr, IR->i8());
+            llvm::Value* leftIsEnd = IR->eq(leftChar, IR->constI8(0));
+            IR->condBranch(leftIsEnd, leftLenDone, leftLenCheck);
+            
+            IR->setInsertPoint(leftLenCheck);
+            llvm::Value* nextLeftLen = IR->add(currentLeftLen, IR->constI32(1));
+            IR->store(nextLeftLen, leftLen);
+            IR->branch(leftLenLoop);
+            
+            IR->setInsertPoint(leftLenDone);
+            llvm::Value* finalLeftLen = IR->load(leftLen);
+            
+            llvm::Value* rightLen = IR->var("right_len", IR->i32(), IR->constI32(0));
+            tempPtr = Right;
+            
+            llvm::BasicBlock* rightLenLoop = IR->createBlock("right_len_loop");
+            llvm::BasicBlock* rightLenDone = IR->createBlock("right_len_done");
+            llvm::BasicBlock* rightLenCheck = IR->createBlock("right_len_check");
+            
+            IR->branch(rightLenLoop);
+            IR->setInsertPoint(rightLenLoop);
+            
+            llvm::Value* currentRightLen = IR->load(rightLen);
+            llvm::Value* rightCharPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Right, currentRightLen);
+            llvm::Value* rightChar = IR->load(rightCharPtr, IR->i8());
+            llvm::Value* rightIsEnd = IR->eq(rightChar, IR->constI8(0));
+            IR->condBranch(rightIsEnd, rightLenDone, rightLenCheck);
+            
+            IR->setInsertPoint(rightLenCheck);
+            llvm::Value* nextRightLen = IR->add(currentRightLen, IR->constI32(1));
+            IR->store(nextRightLen, rightLen);
+            IR->branch(rightLenLoop);
+            
+            IR->setInsertPoint(rightLenDone);
+            llvm::Value* finalRightLen = IR->load(rightLen);
+            
+            llvm::Value* totalLen = IR->add(finalLeftLen, finalRightLen);
+            llvm::Value* newSize = IR->add(totalLen, IR->constI32(1));
+            llvm::Value* newSizeI64 = IR->intCast(newSize, IR->i64());
+            
+            llvm::Value* result = IR->malloc(IR->i8(), newSizeI64);
+            
+            llvm::Value* copyIdx = IR->var("copy_idx", IR->i32(), IR->constI32(0));
+            
+            llvm::BasicBlock* copyLeftLoop = IR->createBlock("copy_left_loop");
+            llvm::BasicBlock* copyLeftDone = IR->createBlock("copy_left_done");
+            llvm::BasicBlock* copyLeftNext = IR->createBlock("copy_left_next");
+            
+            IR->branch(copyLeftLoop);
+            IR->setInsertPoint(copyLeftLoop);
+            
+            llvm::Value* leftIdx = IR->load(copyIdx);
+            llvm::Value* shouldCopyLeft = IR->lt(leftIdx, finalLeftLen);
+            IR->condBranch(shouldCopyLeft, copyLeftNext, copyLeftDone);
+            
+            IR->setInsertPoint(copyLeftNext);
+            llvm::Value* leftSrcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Left, leftIdx);
+            llvm::Value* leftDstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, leftIdx);
+            llvm::Value* leftCopyChar = IR->load(leftSrcPtr, IR->i8());
+            IR->store(leftCopyChar, leftDstPtr);
+            llvm::Value* nextLeftIdx = IR->add(leftIdx, IR->constI32(1));
+            IR->store(nextLeftIdx, copyIdx);
+            IR->branch(copyLeftLoop);
+            
+            IR->setInsertPoint(copyLeftDone);
+            IR->store(IR->constI32(0), copyIdx);
+            
+            llvm::BasicBlock* copyRightLoop = IR->createBlock("copy_right_loop");
+            llvm::BasicBlock* copyRightDone = IR->createBlock("copy_right_done");
+            llvm::BasicBlock* copyRightNext = IR->createBlock("copy_right_next");
+            
+            IR->branch(copyRightLoop);
+            IR->setInsertPoint(copyRightLoop);
+            
+            llvm::Value* rightIdx = IR->load(copyIdx);
+            llvm::Value* shouldCopyRight = IR->lt(rightIdx, finalRightLen);
+            IR->condBranch(shouldCopyRight, copyRightNext, copyRightDone);
+            
+            IR->setInsertPoint(copyRightNext);
+            llvm::Value* rightSrcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Right, rightIdx);
+            llvm::Value* destIdx = IR->add(finalLeftLen, rightIdx);
+            llvm::Value* rightDstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, destIdx);
+            llvm::Value* rightCopyChar = IR->load(rightSrcPtr, IR->i8());
+            IR->store(rightCopyChar, rightDstPtr);
+            llvm::Value* nextRightIdx = IR->add(rightIdx, IR->constI32(1));
+            IR->store(nextRightIdx, copyIdx);
+            IR->branch(copyRightLoop);
+            
+            IR->setInsertPoint(copyRightDone);
+            llvm::Value* nullPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, totalLen);
+            IR->store(IR->constI8(0), nullPtr);
+            
+            return result;
         }
         
-        if (Left->getType()->isPointerTy() && !Right->getType()->isPointerTy()) {
-            llvm::Value* rightStr = nullptr;
-            if (Right->getType()->isIntegerTy()) {
-                llvm::Function* sprintfFunc = IR->getRegisteredBuiltin("sprintf");
-                if (!sprintfFunc) {
-                    IR->registerBuiltin("sprintf", IR->i32(), {IR->i8ptr(), IR->i8ptr()});
-                    sprintfFunc = IR->getRegisteredBuiltin("sprintf");
-                }
-
-                rightStr = IR->malloc(IR->i8(), IR->constI64(32));
-                if (!rightStr) {
-                    Write("Binary Expression", "Failed to allocate memory for integer to string conversion" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                llvm::Value* formatStr = IR->constString("%d");
-                IR->call("sprintf", {rightStr, formatStr, Right});
-            } else if (Right->getType()->isFloatingPointTy()) {
-                llvm::Function* sprintfFunc = IR->getRegisteredBuiltin("sprintf");
-                if (!sprintfFunc) {
-                    IR->registerBuiltin("sprintf", IR->i32(), {IR->i8ptr(), IR->i8ptr()});
-                    sprintfFunc = IR->getRegisteredBuiltin("sprintf");
-                }
-
-                rightStr = IR->malloc(IR->i8(), IR->constI64(32));
-                if (!rightStr) {
-                    Write("Binary Expression", "Failed to allocate memory for floating-point to string conversion" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                llvm::Value* formatStr = IR->constString("%.6f");
-                
-                if (Right->getType()->isFloatTy()) {
-                    Right = IR->floatCast(Right, IR->f64());
-                }
-                
-                IR->call("sprintf", {rightStr, formatStr, Right});
-            }
-            
-            if (rightStr) {
-                llvm::Value* leftLen = IR->call("strlen", {Left});
-                llvm::Value* rightLen = IR->call("strlen", {rightStr});
-                llvm::Value* totalLen = IR->add(leftLen, rightLen);
-                llvm::Value* totalLenPlusOne = IR->add(totalLen, IR->constI64(1));
-
-                llvm::Value* resultPtr = IR->malloc(IR->i8(), totalLenPlusOne);
-                if (!resultPtr) {
-                    Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                
-                IR->call("strcpy", {resultPtr, Left});
-                IR->call("strcat", {resultPtr, rightStr});
-                
-                return resultPtr;
-            }
-        }
-
         if (Left->getType()->isPointerTy() && Right->getType()->isIntegerTy(8)) {
-            llvm::Value* leftLen = IR->call("strlen", {Left});
-            llvm::Value* newLen = IR->add(leftLen, IR->constI64(2));
+            llvm::Value* strLen = IR->var("str_len", IR->i32(), IR->constI32(0));
+            llvm::Value* tempPtr = Left;
             
-            llvm::Value* resultPtr = IR->malloc(IR->i8(), newLen);
-            if (!resultPtr) {
-                Write("Binary Expression", "Failed to allocate memory for string + char concatenation" + Location, 2, true, true, "");
-                return nullptr;
-            }
+            llvm::BasicBlock* lenLoop = IR->createBlock("len_loop");
+            llvm::BasicBlock* lenDone = IR->createBlock("len_done");
+            llvm::BasicBlock* lenCheck = IR->createBlock("len_check");
             
-            IR->call("strcpy", {resultPtr, Left});
+            IR->branch(lenLoop);
+            IR->setInsertPoint(lenLoop);
             
-            llvm::Value* charPos = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), resultPtr, leftLen);
+            llvm::Value* currentLen = IR->load(strLen);
+            llvm::Value* charPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), tempPtr, currentLen);
+            llvm::Value* currentChar = IR->load(charPtr, IR->i8());
+            llvm::Value* isEnd = IR->eq(currentChar, IR->constI8(0));
+            IR->condBranch(isEnd, lenDone, lenCheck);
+            
+            IR->setInsertPoint(lenCheck);
+            llvm::Value* nextLen = IR->add(currentLen, IR->constI32(1));
+            IR->store(nextLen, strLen);
+            IR->branch(lenLoop);
+            
+            IR->setInsertPoint(lenDone);
+            llvm::Value* finalLen = IR->load(strLen);
+            llvm::Value* newSize = IR->add(finalLen, IR->constI32(2));
+            llvm::Value* newSizeI64 = IR->intCast(newSize, IR->i64());
+            
+            llvm::Value* result = IR->malloc(IR->i8(), newSizeI64);
+            
+            llvm::Value* copyIdx = IR->var("copy_idx", IR->i32(), IR->constI32(0));
+            
+            llvm::BasicBlock* copyLoop = IR->createBlock("copy_loop");
+            llvm::BasicBlock* copyDone = IR->createBlock("copy_done");
+            llvm::BasicBlock* copyNext = IR->createBlock("copy_next");
+            
+            IR->branch(copyLoop);
+            IR->setInsertPoint(copyLoop);
+            
+            llvm::Value* idx = IR->load(copyIdx);
+            llvm::Value* shouldCopy = IR->lt(idx, finalLen);
+            IR->condBranch(shouldCopy, copyNext, copyDone);
+            
+            IR->setInsertPoint(copyNext);
+            llvm::Value* srcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Left, idx);
+            llvm::Value* dstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, idx);
+            llvm::Value* copyChar = IR->load(srcPtr, IR->i8());
+            IR->store(copyChar, dstPtr);
+            llvm::Value* nextIdx = IR->add(idx, IR->constI32(1));
+            IR->store(nextIdx, copyIdx);
+            IR->branch(copyLoop);
+            
+            IR->setInsertPoint(copyDone);
+            llvm::Value* charPos = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, finalLen);
             IR->store(Right, charPos);
+            llvm::Value* nullPos = IR->add(finalLen, IR->constI32(1));
+            llvm::Value* nullPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, nullPos);
+            IR->store(IR->constI8(0), nullPtr);
             
-            llvm::Value* nullPos = IR->add(leftLen, IR->constI64(1));
-            llvm::Value* nullPosPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), resultPtr, nullPos);
-            IR->store(IR->constI8(0), nullPosPtr);
-            
-            return resultPtr;
+            return result;
         }
-        
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        return IR->add(Left, Right);
     } else if (BinOpNode->op == "-") {
         promoteToCommonType(Left, Right);
         return IR->sub(Left, Right);
@@ -280,10 +317,38 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, 
         promoteToCommonType(Left, Right);
         return IR->lt(Left, Right);
     } else if (BinOpNode->op == "==") {
-        promoteToCommonType(Left, Right);
+        if (Left->getType() != Right->getType()) {
+            if (Left->getType()->isIntegerTy() && Right->getType()->isIntegerTy()) {
+                unsigned leftBits = Left->getType()->getIntegerBitWidth();
+                unsigned rightBits = Right->getType()->getIntegerBitWidth();
+                if (leftBits < rightBits) {
+                    Left = IR->intCast(Left, Right->getType());
+                } else if (rightBits < leftBits) {
+                    Right = IR->intCast(Right, Left->getType());
+                }
+            } else {
+                promoteToCommonType(Left, Right);
+            }
+        } else {
+            promoteToCommonType(Left, Right);
+        }
         return IR->eq(Left, Right);
     } else if (BinOpNode->op == "!=") {
-        promoteToCommonType(Left, Right);
+        if (Left->getType() != Right->getType()) {
+            if (Left->getType()->isIntegerTy() && Right->getType()->isIntegerTy()) {
+                unsigned leftBits = Left->getType()->getIntegerBitWidth();
+                unsigned rightBits = Right->getType()->getIntegerBitWidth();
+                if (leftBits < rightBits) {
+                    Left = IR->intCast(Left, Right->getType());
+                } else if (rightBits < leftBits) {
+                    Right = IR->intCast(Right, Left->getType());
+                }
+            } else {
+                promoteToCommonType(Left, Right);
+            }
+        } else {
+            promoteToCommonType(Left, Right);
+        }
         return IR->ne(Left, Right);
     } else if (BinOpNode->op == "&&") {
         llvm::Value* leftBool = Left;

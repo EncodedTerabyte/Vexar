@@ -16,7 +16,9 @@ Generator::Generator(GL_ASTPackage& pkg) {
     this->ASTPkg.Optimisation = pkg.Optimisation;
     this->ASTPkg.Verbose = pkg.Verbose;
     this->ASTPkg.Debug = pkg.Debug;
-    this->ASTPkg.Target = pkg.Target;
+    this->ASTPkg.RunAfterCompile = pkg.RunAfterCompile;
+    this->ASTPkg.CompilerTarget = pkg.CompilerTarget;
+
     this->CInstance.ASTRoot = std::move(pkg.ASTRoot);
 
     const std::string LLVM_MODULE_NAME = this->ASTPkg.InputFile.stem().string() + ".vexar";
@@ -52,13 +54,12 @@ void Generator::CreateEntry() {
     IR->endFunction();
 }
 
-void Generator::BuildLLVM() {
+void Generator::BuildModule() {
     for (const auto& Statement : this->CInstance.ASTRoot->statements) {
         if (Statement->type == NodeType::Function) {
             auto* Func = static_cast<FunctionNode*>(Statement.get());
             GenerateFunction(Func, this->GetIR(), this->CInstance.FSymbolTable);
         }
-
         else if (Statement->type == NodeType::ExpressionStatement) {
             auto* Expr = static_cast<ExpressionStatementNode*>(Statement.get());
             if (Expr->expression && Expr->expression->type == NodeType::Function) {
@@ -67,22 +68,86 @@ void Generator::BuildLLVM() {
             }
         }
     }
-
     CreateEntry();
 }
 
-void Generator::PrintLLVM() {
+void Generator::PrintModule() {
     this->CInstance.IR->print();
 }
 
-void Generator::CompileTriple(std::string Triple) {
-    std::string Target;
+void Generator::CompileTriple() {
+    std::string Target = this->ASTPkg.CompilerTarget;
 
-    if (Triple.empty()) {
+    if (Target.empty()) {
         Target = llvm::sys::getDefaultTargetTriple();
     } else {
-        Target = Triple;
+        Target = this->ASTPkg.CompilerTarget;
     }
 
-    CreatePlatformBinary(this->TakeModule(), Target, this->ASTPkg.OutputFile);
+    CreatePlatformBinary(this->TakeModule(), Target, this->ASTPkg.RunAfterCompile, this->ASTPkg.OutputFile);
+}
+
+bool Generator::ValidateModule() {
+    llvm::Module* Module = this->GetModulePtr();
+    
+    std::string ErrorStr;
+    llvm::raw_string_ostream ErrorStream(ErrorStr);
+    
+    if (llvm::verifyModule(*Module, &ErrorStream)) {
+        ErrorStream.flush();
+        return false;
+    } 
+
+    return true;
+}
+
+void Generator::OptimiseModule() {
+    llvm::Module* Module = this->GetModulePtr();
+    int OptLevel = this->ASTPkg.Optimisation;
+    
+    llvm::LoopAnalysisManager LAM;
+    llvm::FunctionAnalysisManager FAM;
+    llvm::CGSCCAnalysisManager CGAM;
+    llvm::ModuleAnalysisManager MAM;
+    
+    llvm::PassBuilder PB;
+    PB.registerModuleAnalyses(MAM);
+    PB.registerCGSCCAnalyses(CGAM);
+    PB.registerFunctionAnalyses(FAM);
+    PB.registerLoopAnalyses(LAM);
+    PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+    
+    llvm::OptimizationLevel LLVMOptLevel;
+    switch(OptLevel) {
+        case 0:
+            LLVMOptLevel = llvm::OptimizationLevel::O0;
+            break;
+        case 1:
+            LLVMOptLevel = llvm::OptimizationLevel::O1;
+            break;
+        case 2:
+            LLVMOptLevel = llvm::OptimizationLevel::O2;
+            break;
+        case 3:
+            LLVMOptLevel = llvm::OptimizationLevel::O3;
+            break;
+        case 4:
+            LLVMOptLevel = llvm::OptimizationLevel::Os;
+            break;
+        case 5:
+            LLVMOptLevel = llvm::OptimizationLevel::Oz;
+            break;
+        default:
+            LLVMOptLevel = llvm::OptimizationLevel::O2;
+            break;
+    }
+    
+    llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(LLVMOptLevel);
+    
+    if (OptLevel >= 4) {
+        llvm::ModulePassManager ExtraMPM = PB.buildPerModuleDefaultPipeline(LLVMOptLevel);
+        MPM.addPass(std::move(ExtraMPM));
+    }
+    
+    MPM.run(*Module, MAM);
 }

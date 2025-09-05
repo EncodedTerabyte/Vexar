@@ -32,7 +32,7 @@ func toUpper(input: string): string {
         var j = 0;
         var replaced = false;
         while (j < len(chars_lower)) {
-            if (c == chars_lower[j]) {
+            if (c == chars_lower[j]) { // broken instruction
                 result = result + chars_upper[j];
                 replaced = true;
                 break;

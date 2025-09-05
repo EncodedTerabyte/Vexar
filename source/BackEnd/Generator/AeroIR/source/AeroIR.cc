@@ -373,6 +373,18 @@ llvm::Value* AeroIR::neg(llvm::Value* val) {
 }
 
 llvm::Value* AeroIR::eq(llvm::Value* lhs, llvm::Value* rhs) {
+    if (lhs->getType() != rhs->getType()) {
+        if (lhs->getType()->isIntegerTy() && rhs->getType()->isIntegerTy()) {
+            unsigned lhsBits = lhs->getType()->getIntegerBitWidth();
+            unsigned rhsBits = rhs->getType()->getIntegerBitWidth();
+            if (lhsBits < rhsBits) {
+                lhs = builder->CreateZExt(lhs, rhs->getType());
+            } else if (rhsBits < lhsBits) {
+                rhs = builder->CreateZExt(rhs, lhs->getType());
+            }
+        }
+    }
+    
     return lhs->getType()->isIntegerTy() ? 
            builder->CreateICmpEQ(lhs, rhs) : builder->CreateFCmpOEQ(lhs, rhs);
 }

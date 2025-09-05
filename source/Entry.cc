@@ -6,6 +6,7 @@
 
 #include "MiddleEnd/ProgramParser.hh"
 
+#include "BackEnd/Generator/ModuleAnalyser.hh"
 #include "BackEnd/Generator/Generator.hh"
 
 #include "CommandLine.hh"
@@ -16,35 +17,47 @@
 #include <cstdint>
 #include <vector>
 #include <string>
-#include <string>
 #include <vector>
 #include <map>
 #include <sstream>
+#include <ctime>
+#include <chrono>
+
+#include "Menu.hh"
+
 
 int main(int argc, char* argv[]) {
-    Write("Vexar CLI", "Initialized Vexar CLI", 0, false, true);
+    auto V_C_START = std::chrono::high_resolution_clock::now();
+    Write("Vexar CLI", "Initialized Vexar CLI", 0, true, true);
 
     if (argc == 1) {
-        Write("CLI", "No input file specified", 2, true, false);
+        Write("CLI", "No input file specified", 2, true, true);
     }
 
     auto Instructions = CommandLineHandler(argc, argv);
 
     if (Instructions->UsingMenu) {
         if (Instructions->HelpMenu) {
-            std::cout << "Help Menu Placeholder!!" << std::endl;
-        } else if (Instructions->VersionMenu) {
-            std::cout << "Vexar (Built & Officially Owned by Vexar Project) 0.1.0 INDEV " << std::endl;
-            std::cout << "Copyright (C) 2025 Free Software Foundation, Inc." << std::endl;
-            std::cout << "This is free software; see the source for copying conditions.  There is NO" << std::endl;
-            std::cout << "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE." << std::endl;
+            PrintVesion();
+            PrintHelpMenu();
+        } else if (Instructions->TargetsMenu) {
+            PrintVesion();
+            PrintTargets();
+        }else if (Instructions->VersionMenu) {
+            PrintVesion();
         }
         return 0;
     }
 
     Instructions->FileContents = SerializeFile(Instructions->InputFile);
     Instructions->ProgramTokens = Tokenize(Instructions->FileContents);
-    if (Instructions->PrintTokens) {
+
+    if (Instructions->Verbose) {   
+        Write("CLI", "Serialization Complete", 3, true, true);
+        Write("CLI", "Tokenization Complete", 3, true, true);
+    }
+
+    if (Instructions->DumpTokens) {
         for (const auto& tok : Instructions->ProgramTokens) {
             std::string typeStr;
             switch (tok.type) {
@@ -70,9 +83,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if (Instructions->Verbose) {   
+        Write("CLI", "Generating Program", 3, true, true);
+    }
+
     Instructions->ProgramAST = ParseProgram(Instructions->ProgramTokens);
 
-    if (Instructions->PrintAST) {
+    if (Instructions->DumpAST) {
         Write("Parser", Instructions->ProgramAST->get(), 0, true);
     }
 
@@ -83,12 +100,90 @@ int main(int argc, char* argv[]) {
     pkg.Optimisation = Instructions->OptimizationLevel;
     pkg.Verbose = Instructions->Verbose;
     pkg.Debug = Instructions->Debug;
+    pkg.RunAfterCompile = Instructions->RunAfterCompile;
+    pkg.CompilerTarget = Instructions->CompilerTarget;
+
+    if (Instructions->Verbose) {   
+        std::ostringstream ss;
+        ss << "Compiling with flags:\n"
+        << "  Input File: "    << Instructions->InputFile << "\n"
+        << "  Output File: "   << Instructions->OutputFile << "\n"
+        << "  Optimization: O" << Instructions->OptimizationLevel << "\n"
+        << "  Verbose: "       << (Instructions->Verbose ? "true" : "false") << "\n"
+        << "  Debug: "         << (Instructions->Debug ? "true" : "false") << "\n";
+        
+        Write("CLI", ss.str(), 1, true, true);
+    }
 
     Generator Gen(pkg);
-    Gen.BuildLLVM();
-    //Gen.PrintLLVM();
-    Gen.CompileTriple(Instructions->CompilerTarget);
-    //Gen.BuildExecutable();
+    llvm::Module* Mode = Gen.GetModulePtr();
+    Gen.BuildModule();
 
+    ModuleAnalyzer Analyzer(Mode);
+
+    if (Instructions->DumpBIN) {   
+        Analyzer.RunFullAnalysis();
+    } else {
+        if (Instructions->DumpVec ) {
+            Analyzer.AnalyzeVectorization();
+        } 
+
+        if (Instructions->DumpOp) {
+            Analyzer.AnalyzeOptimizations();
+        }
+
+        if (Instructions->DumpSym) {
+            Analyzer.AnalyzeSymbols();
+        }
+
+        if (Instructions->DumpMem) {
+            Analyzer.AnalyzeMemoryUsage();
+        }
+
+        if (Instructions->DumpMod) {
+            Analyzer.AnalyzeModuleStructure();
+        }
+
+        if (Instructions->DumpBC) {
+            Analyzer.DumpBitcode();
+        }
+
+        if (Instructions->DumpVBC) {
+            Analyzer.DumpVerboseBitcode();
+        }
+
+        if (Instructions->DumpVIR) {
+            Analyzer.DisassembleIR();
+        }
+    }
+
+    if (Instructions->DumpASM) {
+        NativeAssemblyAnalyzer AsmAnalyzer(Mode);
+        AsmAnalyzer.PrintNativeAssembly();
+    }
+
+    if (Instructions->DumpIR) {
+        Gen.PrintModule();
+    }
+
+    if (Instructions->Check) {
+        bool isValid = Gen.ValidateModule();
+        if (isValid) {
+            Write("CLI", "Module validation successful. No errors found.", 3, true, true);
+        } else {
+            Write("CLI", "Module validation failed. Errors were found.", 2, true, true);
+        }
+    } else {
+        Gen.OptimiseModule();
+        Gen.CompileTriple();
+    }
+    
+    auto V_C_END = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = V_C_END - V_C_START;
+
+    if (Instructions->Verbose) {
+        Write("CLI", "Code Generation Complete In " + std::to_string(elapsed.count()) + "s", 3, true, true);
+    }
+    
     return 0;
 }

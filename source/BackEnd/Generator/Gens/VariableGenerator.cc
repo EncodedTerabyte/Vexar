@@ -128,7 +128,10 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
             } else if (BaseType->isFloatingPointTy()) {
                 defaultValue = llvm::ConstantFP::get(BaseType, 0.0);
             } else if (BaseType->isPointerTy()) {
-                defaultValue = IR->constString("");
+                llvm::Value* size = IR->constI64(1);
+                defaultValue = IR->malloc(IR->i8(), size);
+                llvm::Value* nullChar = IR->constI8(0);
+                IR->store(nullChar, defaultValue);
             }
             
             if (defaultValue) {

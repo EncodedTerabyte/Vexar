@@ -19,7 +19,6 @@
 #include "llvm/IR/LegacyPassManager.h"
 
 #include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/FileSystem.h"
 
@@ -38,6 +37,13 @@
 #include "lld/Common/Driver.h"
 
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Target/TargetMachine.h"
 
 #include "llvm/TargetParser/Triple.h"
+
+#include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/IPO.h"
+
+#include "llvm-c/Target.h"
+#include "llvm-c/TargetMachine.h"
+
+#include "llvm/CodeGen/TargetPassConfig.h"

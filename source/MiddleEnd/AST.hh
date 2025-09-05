@@ -47,10 +47,10 @@ struct ASTNode {
     virtual std::string get(const std::string& prefix = "", bool isLast = true) const = 0;
 protected:
     static std::string branch(const std::string& prefix, bool isLast) {
-        return prefix + (isLast ? "\\--" : "|--");
+        return prefix + (isLast ? "" : "");
     }
     static std::string nextPrefix(const std::string& prefix, bool isLast) {
-        return prefix + (isLast ? "    " : "|   ");
+        return prefix + (isLast ? "    " : "");
     }
     static std::string to_string(const std::string& s) {
         return s;

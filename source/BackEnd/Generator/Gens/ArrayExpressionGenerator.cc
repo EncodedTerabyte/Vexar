@@ -56,12 +56,12 @@ llvm::Value* GenerateArrayExpression(const std::unique_ptr<ASTNode>& Expr, AeroI
             }
         } else if (allocatedType->isPointerTy()) {
             llvm::Value* loadedPtr = IR->load(allocaInst);
-            llvm::Value* elementPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i32(), loadedPtr, indexValue);
-            return IR->getBuilder()->CreateLoad(IR->i32(), elementPtr);
+            llvm::Value* elementPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), loadedPtr, indexValue);
+            return IR->getBuilder()->CreateLoad(IR->i8(), elementPtr);
         } else if (allocatedType->isArrayTy()) {
             llvm::Value* elementPtr = IR->getBuilder()->CreateInBoundsGEP(allocatedType, arrayPtr, {IR->constI32(0), indexValue});
             llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
-            llvm::Type* elementType = arrayType ? arrayType->getElementType() : IR->i32();
+            llvm::Type* elementType = arrayType ? arrayType->getElementType() : IR->i8();
             return IR->getBuilder()->CreateLoad(elementType, elementPtr);
         }
     }

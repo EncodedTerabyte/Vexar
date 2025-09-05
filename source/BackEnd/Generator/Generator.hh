@@ -13,8 +13,9 @@ struct GL_ASTPackage {
 
     bool Debug;
     bool Verbose;
+    bool RunAfterCompile;
 
-    std::string Target;
+    std::string CompilerTarget;
 };
 
 class Generator {
@@ -26,9 +27,9 @@ private:
         fs::path OutputFile;
 
         int Optimisation = 0;
-        bool Debug, Verbose;
+        bool Debug, Verbose, RunAfterCompile;
 
-        std::string Target;
+        std::string CompilerTarget;
     };
 
     struct CompilerInstance {
@@ -73,7 +74,9 @@ public:
 
     Generator(GL_ASTPackage& pkg);
 
-    void BuildLLVM();
-    void PrintLLVM();
-    void CompileTriple(std::string Triple);
+    void BuildModule();
+    void PrintModule();
+    bool ValidateModule();
+    void OptimiseModule();
+    void CompileTriple();
 };

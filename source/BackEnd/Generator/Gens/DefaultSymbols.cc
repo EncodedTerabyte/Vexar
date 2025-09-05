@@ -135,7 +135,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
     };
 
 
-    Builtins["readLine"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["input"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         llvm::Function* scanfFunc = IR->getModule()->getFunction("scanf");
         if (!scanfFunc) {
             llvm::FunctionType* scanfType = llvm::FunctionType::get(
