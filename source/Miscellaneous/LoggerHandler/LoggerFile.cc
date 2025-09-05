@@ -35,7 +35,7 @@ fs::path CacheLLoggerFile() {
 // 0 = log
 // 1 = warm
 // 2 = error
-
+// 3 = success
 void Write(const std::string& Caption, const std::string& Info, int Level, bool DisplayConsole, bool ShowTime, const std::string& ExtraInfo) {
 
     Level = std::clamp(Level, 0, 3);

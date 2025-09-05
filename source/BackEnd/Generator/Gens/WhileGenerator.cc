@@ -3,7 +3,7 @@
 #include "ConditionGenerator.hh"
 #include "BreakGenerator.hh"
 
-llvm::Value* GenerateWhile(WhileNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateWhile(WhileNode* Node, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Node) {
         Write("While Generator", "Null WhileNode pointer", 2, true, true, "");
         return nullptr;
@@ -11,36 +11,31 @@ llvm::Value* GenerateWhile(WhileNode* Node, llvm::IRBuilder<>& Builder, ScopeSta
 
     std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
 
-    llvm::Function* CurrentFunction = Builder.GetInsertBlock()->getParent();
-    if (!CurrentFunction) {
-        Write("While Generator", "No current function for while loop" + Location, 2, true, true, "");
-        return nullptr;
-    }
+    llvm::BasicBlock* LoopHeader = IR->createBlock("while.header");
+    llvm::BasicBlock* LoopBody = IR->createBlock("while.body");
+    llvm::BasicBlock* LoopExit = IR->createBlock("while.exit");
 
-    llvm::BasicBlock* LoopHeader = llvm::BasicBlock::Create(Builder.getContext(), "while.header", CurrentFunction);
-    llvm::BasicBlock* LoopBody = llvm::BasicBlock::Create(Builder.getContext(), "while.body", CurrentFunction);
-    llvm::BasicBlock* LoopExit = llvm::BasicBlock::Create(Builder.getContext(), "while.exit", CurrentFunction);
+    IR->branch(LoopHeader);
+    IR->setInsertPoint(LoopHeader);
 
-    Builder.CreateBr(LoopHeader);
-    Builder.SetInsertPoint(LoopHeader);
-
-    llvm::Value* Condition = GenerateCondition(Node->condition.get(), Builder, SymbolStack, Methods);
+    llvm::Value* Condition = GenerateCondition(Node->condition.get(), IR, Methods);
     if (!Condition) {
         Write("While Generator", "Failed to generate while condition" + Location, 2, true, true, "");
         return nullptr;
     }
 
-    Builder.CreateCondBr(Condition, LoopBody, LoopExit);
+    IR->condBranch(Condition, LoopBody, LoopExit);
 
-    Builder.SetInsertPoint(LoopBody);
+    IR->setInsertPoint(LoopBody);
     LoopExitStack.push(LoopExit);
-    GenerateBlock(Node->block, Builder, SymbolStack, Methods);
+    GenerateBlock(Node->block, IR, Methods);
     LoopExitStack.pop();
 
-    if (!Builder.GetInsertBlock()->getTerminator()) {
-        Builder.CreateBr(LoopHeader);
+    llvm::BasicBlock* currentBlock = IR->getBuilder()->GetInsertBlock();
+    if (!currentBlock->getTerminator()) {
+        IR->branch(LoopHeader);
     }
 
-    Builder.SetInsertPoint(LoopExit);
-    return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+    IR->setInsertPoint(LoopExit);
+    return IR->constI32(0);
 }

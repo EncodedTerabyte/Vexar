@@ -8,3 +8,4 @@ bin/
 *.exe
 *.vxr
 *.bat
+*.s

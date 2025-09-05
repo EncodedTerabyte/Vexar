@@ -1,7 +1,7 @@
 #include "BinaryOpGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Expr) {
         Write("Binary Expression", "Null ASTNode pointer", 2, true, true, "");
         return nullptr;
@@ -15,13 +15,13 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         return nullptr;
     }
        
-    llvm::Value* Left = GenerateExpression(BinOpNode->left, Builder, SymbolStack, Methods);
+    llvm::Value* Left = GenerateExpression(BinOpNode->left, IR, Methods);
     if (!Left) {
         Write("Binary Expression", "Invalid left expression for operator " + BinOpNode->op + Location, 2, true, true, "");
         return nullptr;
     }
 
-    llvm::Value* Right = GenerateExpression(BinOpNode->right, Builder, SymbolStack, Methods);
+    llvm::Value* Right = GenerateExpression(BinOpNode->right, IR, Methods);
     if (!Right) {
         Write("Binary Expression", "Invalid right expression for operator " + BinOpNode->op + Location, 2, true, true, "");
         return nullptr;
@@ -34,32 +34,48 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         
         llvm::Type* targetType = nullptr;
         if (L->getType()->isDoubleTy() || R->getType()->isDoubleTy()) {
-            targetType = llvm::Type::getDoubleTy(Builder.getContext());
+            targetType = IR->f64();
         } else if (L->getType()->isFloatTy() || R->getType()->isFloatTy()) {
-            targetType = llvm::Type::getFloatTy(Builder.getContext());
+            targetType = IR->f32();
         } else if (L->getType()->isIntegerTy() && R->getType()->isIntegerTy()) {
-            return L->getType();
+            unsigned leftBits = L->getType()->getIntegerBitWidth();
+            unsigned rightBits = R->getType()->getIntegerBitWidth();
+            unsigned targetBits = std::max(leftBits, rightBits);
+            
+            if (targetBits < 32) {
+                targetBits = 32;
+            }
+            
+            targetType = llvm::Type::getIntNTy(*IR->getContext(), targetBits);
         } else {
             return nullptr;
         }
         
-        if (L->getType()->isIntegerTy()) {
-            L = Builder.CreateSIToFP(L, targetType);
+        if (L->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
+            L = IR->getBuilder()->CreateSIToFP(L, targetType);
+        } else if (L->getType()->isIntegerTy() && targetType->isIntegerTy()) {
+            if (L->getType()->getIntegerBitWidth() < targetType->getIntegerBitWidth()) {
+                L = IR->intCast(L, targetType);
+            }
         } else if (L->getType() != targetType) {
             if (L->getType()->isFloatTy() && targetType->isDoubleTy()) {
-                L = Builder.CreateFPExt(L, targetType);
+                L = IR->floatCast(L, targetType);
             } else if (L->getType()->isDoubleTy() && targetType->isFloatTy()) {
-                L = Builder.CreateFPTrunc(L, targetType);
+                L = IR->floatCast(L, targetType);
             }
         }
         
-        if (R->getType()->isIntegerTy()) {
-            R = Builder.CreateSIToFP(R, targetType);
+        if (R->getType()->isIntegerTy() && targetType->isFloatingPointTy()) {
+            R = IR->getBuilder()->CreateSIToFP(R, targetType);
+        } else if (R->getType()->isIntegerTy() && targetType->isIntegerTy()) {
+            if (R->getType()->getIntegerBitWidth() < targetType->getIntegerBitWidth()) {
+                R = IR->intCast(R, targetType);
+            }
         } else if (R->getType() != targetType) {
             if (R->getType()->isFloatTy() && targetType->isDoubleTy()) {
-                R = Builder.CreateFPExt(R, targetType);
+                R = IR->floatCast(R, targetType);
             } else if (R->getType()->isDoubleTy() && targetType->isFloatTy()) {
-                R = Builder.CreateFPTrunc(R, targetType);
+                R = IR->floatCast(R, targetType);
             }
         }
         
@@ -67,376 +83,273 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
     };
 
     if (BinOpNode->op == "+") {
-        if (Left->getType()->isIntegerTy(8) && Right->getType()->isIntegerTy(8)) {
-            llvm::LLVMContext& ctx = Builder.getContext();
-            llvm::Type* i8Type = llvm::Type::getInt8Ty(ctx);
-            
-            llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-            if (!mallocFunc) {
-                llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                    llvm::PointerType::get(ctx, 0),
-                    {llvm::Type::getInt64Ty(ctx)},
-                    false
-                );
-                mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-            
-            llvm::Value* size = llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 3);
-            llvm::Value* buffer = Builder.CreateCall(mallocFunc, {size});
-            
-            llvm::Value* ptr0 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 0));
-            llvm::Value* ptr1 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 1));
-            llvm::Value* ptr2 = Builder.CreateInBoundsGEP(i8Type, buffer, llvm::ConstantInt::get(llvm::Type::getInt32Ty(ctx), 2));
-            
-            Builder.CreateStore(Left, ptr0);
-            Builder.CreateStore(Right, ptr1);
-            Builder.CreateStore(llvm::ConstantInt::get(i8Type, 0), ptr2);
-            
-            return buffer;
-        }
-        
         if (Left->getType()->isPointerTy() && Right->getType()->isPointerTy()) {
-            llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
-            if (!strlenFunc) {
-                llvm::FunctionType* strlenType = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(Builder.getContext()),
-                    {llvm::PointerType::get(Builder.getContext(), 0)},
-                    false
-                );
-                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-            if (!mallocFunc) {
-                llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                    llvm::PointerType::get(Builder.getContext(), 0),
-                    {llvm::Type::getInt64Ty(Builder.getContext())},
-                    false
-                );
-                mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
-            if (!strcpyFunc) {
-                llvm::FunctionType* strcpyType = llvm::FunctionType::get(
-                    llvm::PointerType::get(Builder.getContext(), 0),
-                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
-                    false
-                );
-                strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Function* strcatFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcat");
-            if (!strcatFunc) {
-                llvm::FunctionType* strcatType = llvm::FunctionType::get(
-                    llvm::PointerType::get(Builder.getContext(), 0),
-                    {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
-                    false
-                );
-                strcatFunc = llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Value* leftLen = Builder.CreateCall(strlenFunc, {Left});
-            llvm::Value* rightLen = Builder.CreateCall(strlenFunc, {Right});
-            llvm::Value* totalLen = Builder.CreateAdd(leftLen, rightLen);
-            llvm::Value* totalLenPlusOne = Builder.CreateAdd(totalLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 1));
-
-            llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {totalLenPlusOne});
-            if (!resultPtr) {
-                Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
-                return nullptr;
-            }
+            llvm::Value* leftLen = IR->var("left_len", IR->i32(), IR->constI32(0));
+            llvm::Value* tempPtr = Left;
             
-            Builder.CreateCall(strcpyFunc, {resultPtr, Left});
-            Builder.CreateCall(strcatFunc, {resultPtr, Right});
+            llvm::BasicBlock* leftLenLoop = IR->createBlock("left_len_loop");
+            llvm::BasicBlock* leftLenDone = IR->createBlock("left_len_done");
+            llvm::BasicBlock* leftLenCheck = IR->createBlock("left_len_check");
             
-            return resultPtr;
+            IR->branch(leftLenLoop);
+            IR->setInsertPoint(leftLenLoop);
+            
+            llvm::Value* currentLeftLen = IR->load(leftLen);
+            llvm::Value* leftCharPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), tempPtr, currentLeftLen);
+            llvm::Value* leftChar = IR->load(leftCharPtr, IR->i8());
+            llvm::Value* leftIsEnd = IR->eq(leftChar, IR->constI8(0));
+            IR->condBranch(leftIsEnd, leftLenDone, leftLenCheck);
+            
+            IR->setInsertPoint(leftLenCheck);
+            llvm::Value* nextLeftLen = IR->add(currentLeftLen, IR->constI32(1));
+            IR->store(nextLeftLen, leftLen);
+            IR->branch(leftLenLoop);
+            
+            IR->setInsertPoint(leftLenDone);
+            llvm::Value* finalLeftLen = IR->load(leftLen);
+            
+            llvm::Value* rightLen = IR->var("right_len", IR->i32(), IR->constI32(0));
+            tempPtr = Right;
+            
+            llvm::BasicBlock* rightLenLoop = IR->createBlock("right_len_loop");
+            llvm::BasicBlock* rightLenDone = IR->createBlock("right_len_done");
+            llvm::BasicBlock* rightLenCheck = IR->createBlock("right_len_check");
+            
+            IR->branch(rightLenLoop);
+            IR->setInsertPoint(rightLenLoop);
+            
+            llvm::Value* currentRightLen = IR->load(rightLen);
+            llvm::Value* rightCharPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Right, currentRightLen);
+            llvm::Value* rightChar = IR->load(rightCharPtr, IR->i8());
+            llvm::Value* rightIsEnd = IR->eq(rightChar, IR->constI8(0));
+            IR->condBranch(rightIsEnd, rightLenDone, rightLenCheck);
+            
+            IR->setInsertPoint(rightLenCheck);
+            llvm::Value* nextRightLen = IR->add(currentRightLen, IR->constI32(1));
+            IR->store(nextRightLen, rightLen);
+            IR->branch(rightLenLoop);
+            
+            IR->setInsertPoint(rightLenDone);
+            llvm::Value* finalRightLen = IR->load(rightLen);
+            
+            llvm::Value* totalLen = IR->add(finalLeftLen, finalRightLen);
+            llvm::Value* newSize = IR->add(totalLen, IR->constI32(1));
+            llvm::Value* newSizeI64 = IR->intCast(newSize, IR->i64());
+            
+            llvm::Value* result = IR->malloc(IR->i8(), newSizeI64);
+            
+            llvm::Value* copyIdx = IR->var("copy_idx", IR->i32(), IR->constI32(0));
+            
+            llvm::BasicBlock* copyLeftLoop = IR->createBlock("copy_left_loop");
+            llvm::BasicBlock* copyLeftDone = IR->createBlock("copy_left_done");
+            llvm::BasicBlock* copyLeftNext = IR->createBlock("copy_left_next");
+            
+            IR->branch(copyLeftLoop);
+            IR->setInsertPoint(copyLeftLoop);
+            
+            llvm::Value* leftIdx = IR->load(copyIdx);
+            llvm::Value* shouldCopyLeft = IR->lt(leftIdx, finalLeftLen);
+            IR->condBranch(shouldCopyLeft, copyLeftNext, copyLeftDone);
+            
+            IR->setInsertPoint(copyLeftNext);
+            llvm::Value* leftSrcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Left, leftIdx);
+            llvm::Value* leftDstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, leftIdx);
+            llvm::Value* leftCopyChar = IR->load(leftSrcPtr, IR->i8());
+            IR->store(leftCopyChar, leftDstPtr);
+            llvm::Value* nextLeftIdx = IR->add(leftIdx, IR->constI32(1));
+            IR->store(nextLeftIdx, copyIdx);
+            IR->branch(copyLeftLoop);
+            
+            IR->setInsertPoint(copyLeftDone);
+            IR->store(IR->constI32(0), copyIdx);
+            
+            llvm::BasicBlock* copyRightLoop = IR->createBlock("copy_right_loop");
+            llvm::BasicBlock* copyRightDone = IR->createBlock("copy_right_done");
+            llvm::BasicBlock* copyRightNext = IR->createBlock("copy_right_next");
+            
+            IR->branch(copyRightLoop);
+            IR->setInsertPoint(copyRightLoop);
+            
+            llvm::Value* rightIdx = IR->load(copyIdx);
+            llvm::Value* shouldCopyRight = IR->lt(rightIdx, finalRightLen);
+            IR->condBranch(shouldCopyRight, copyRightNext, copyRightDone);
+            
+            IR->setInsertPoint(copyRightNext);
+            llvm::Value* rightSrcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Right, rightIdx);
+            llvm::Value* destIdx = IR->add(finalLeftLen, rightIdx);
+            llvm::Value* rightDstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, destIdx);
+            llvm::Value* rightCopyChar = IR->load(rightSrcPtr, IR->i8());
+            IR->store(rightCopyChar, rightDstPtr);
+            llvm::Value* nextRightIdx = IR->add(rightIdx, IR->constI32(1));
+            IR->store(nextRightIdx, copyIdx);
+            IR->branch(copyRightLoop);
+            
+            IR->setInsertPoint(copyRightDone);
+            llvm::Value* nullPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, totalLen);
+            IR->store(IR->constI8(0), nullPtr);
+            
+            return result;
         }
         
-        if (Left->getType()->isPointerTy() && !Right->getType()->isPointerTy()) {
-            llvm::Value* rightStr = nullptr;
-            if (Right->getType()->isIntegerTy()) {
-                llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-                if (!mallocFunc) {
-                    llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                        llvm::PointerType::get(Builder.getContext(), 0),
-                        {llvm::Type::getInt64Ty(Builder.getContext())},
-                        false
-                    );
-                    mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
-                if (!sprintfFunc) {
-                    llvm::FunctionType* sprintfType = llvm::FunctionType::get(
-                        llvm::Type::getInt32Ty(Builder.getContext()),
-                        {llvm::PointerType::get(Builder.getContext(), 0), 
-                        llvm::PointerType::get(Builder.getContext(), 0)},
-                        true
-                    );
-                    sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                rightStr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
-                if (!rightStr) {
-                    Write("Binary Expression", "Failed to allocate memory for integer to string conversion" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
-                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(Builder.getContext(), 0));
-                Builder.CreateCall(sprintfFunc, {rightStr, formatPtr, Right});
-            } else if (Right->getType()->isFloatingPointTy()) {
-                llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-                if (!mallocFunc) {
-                    llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                        llvm::PointerType::get(Builder.getContext(), 0),
-                        {llvm::Type::getInt64Ty(Builder.getContext())},
-                        false
-                    );
-                    mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
-                if (!sprintfFunc) {
-                    llvm::FunctionType* sprintfType = llvm::FunctionType::get(
-                        llvm::Type::getInt32Ty(Builder.getContext()),
-                        {llvm::PointerType::get(Builder.getContext(), 0), 
-                        llvm::PointerType::get(Builder.getContext(), 0)},
-                        true
-                    );
-                    sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                rightStr = Builder.CreateCall(mallocFunc, {llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32)});
-                if (!rightStr) {
-                    Write("Binary Expression", "Failed to allocate memory for floating-point to string conversion" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_to_str_fmt");
-                llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(Builder.getContext(), 0));
-                
-                if (Right->getType()->isFloatTy()) {
-                    Right = Builder.CreateFPExt(Right, llvm::Type::getDoubleTy(Builder.getContext()));
-                }
-                
-                Builder.CreateCall(sprintfFunc, {rightStr, formatPtr, Right});
-            }
-            
-            if (rightStr) {
-                llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
-                if (!strlenFunc) {
-                    llvm::FunctionType* strlenType = llvm::FunctionType::get(
-                        llvm::Type::getInt64Ty(Builder.getContext()),
-                        {llvm::PointerType::get(Builder.getContext(), 0)},
-                        false
-                    );
-                    strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-                llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
-                if (!strcpyFunc) {
-                    llvm::FunctionType* strcpyType = llvm::FunctionType::get(
-                        llvm::PointerType::get(Builder.getContext(), 0),
-                        {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
-                        false
-                    );
-                    strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                llvm::Function* strcatFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcat");
-                if (!strcatFunc) {
-                    llvm::FunctionType* strcatType = llvm::FunctionType::get(
-                        llvm::PointerType::get(Builder.getContext(), 0),
-                        {llvm::PointerType::get(Builder.getContext(), 0), llvm::PointerType::get(Builder.getContext(), 0)},
-                        false
-                    );
-                    strcatFunc = llvm::Function::Create(strcatType, llvm::Function::ExternalLinkage, "strcat", Builder.GetInsertBlock()->getParent()->getParent());
-                }
-
-                llvm::Value* leftLen = Builder.CreateCall(strlenFunc, {Left});
-                llvm::Value* rightLen = Builder.CreateCall(strlenFunc, {rightStr});
-                llvm::Value* totalLen = Builder.CreateAdd(leftLen, rightLen);
-                llvm::Value* totalLenPlusOne = Builder.CreateAdd(totalLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 1));
-
-                llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {totalLenPlusOne});
-                if (!resultPtr) {
-                    Write("Binary Expression", "Failed to allocate memory for string concatenation" + Location, 2, true, true, "");
-                    return nullptr;
-                }
-                
-                Builder.CreateCall(strcpyFunc, {resultPtr, Left});
-                Builder.CreateCall(strcatFunc, {resultPtr, rightStr});
-                
-                return resultPtr;
-            }
-        }
-
         if (Left->getType()->isPointerTy() && Right->getType()->isIntegerTy(8)) {
-            llvm::LLVMContext& ctx = Builder.getContext();
+            llvm::Value* strLen = IR->var("str_len", IR->i32(), IR->constI32(0));
+            llvm::Value* tempPtr = Left;
             
-            llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
-            if (!strlenFunc) {
-                llvm::FunctionType* strlenType = llvm::FunctionType::get(
-                    llvm::Type::getInt64Ty(ctx),
-                    {llvm::PointerType::get(ctx, 0)},
-                    false
-                );
-                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Function* mallocFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("malloc");
-            if (!mallocFunc) {
-                llvm::FunctionType* mallocType = llvm::FunctionType::get(
-                    llvm::PointerType::get(ctx, 0),
-                    {llvm::Type::getInt64Ty(ctx)},
-                    false
-                );
-                mallocFunc = llvm::Function::Create(mallocType, llvm::Function::ExternalLinkage, "malloc", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            llvm::Function* strcpyFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strcpy");
-            if (!strcpyFunc) {
-                llvm::FunctionType* strcpyType = llvm::FunctionType::get(
-                    llvm::PointerType::get(ctx, 0),
-                    {llvm::PointerType::get(ctx, 0), llvm::PointerType::get(ctx, 0)},
-                    false
-                );
-                strcpyFunc = llvm::Function::Create(strcpyType, llvm::Function::ExternalLinkage, "strcpy", Builder.GetInsertBlock()->getParent()->getParent());
-            }
-
-            // Get length of the string
-            llvm::Value* leftLen = Builder.CreateCall(strlenFunc, {Left});
-            // Add 2: one for the char, one for null terminator
-            llvm::Value* newLen = Builder.CreateAdd(leftLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 2));
+            llvm::BasicBlock* lenLoop = IR->createBlock("len_loop");
+            llvm::BasicBlock* lenDone = IR->createBlock("len_done");
+            llvm::BasicBlock* lenCheck = IR->createBlock("len_check");
             
-            // Allocate new buffer
-            llvm::Value* resultPtr = Builder.CreateCall(mallocFunc, {newLen});
-            if (!resultPtr) {
-                Write("Binary Expression", "Failed to allocate memory for string + char concatenation" + Location, 2, true, true, "");
-                return nullptr;
-            }
+            IR->branch(lenLoop);
+            IR->setInsertPoint(lenLoop);
             
-            // Copy the original string
-            Builder.CreateCall(strcpyFunc, {resultPtr, Left});
+            llvm::Value* currentLen = IR->load(strLen);
+            llvm::Value* charPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), tempPtr, currentLen);
+            llvm::Value* currentChar = IR->load(charPtr, IR->i8());
+            llvm::Value* isEnd = IR->eq(currentChar, IR->constI8(0));
+            IR->condBranch(isEnd, lenDone, lenCheck);
             
-            // Append the character manually
-            llvm::Value* charPos = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(ctx), resultPtr, leftLen);
-            Builder.CreateStore(Right, charPos);
+            IR->setInsertPoint(lenCheck);
+            llvm::Value* nextLen = IR->add(currentLen, IR->constI32(1));
+            IR->store(nextLen, strLen);
+            IR->branch(lenLoop);
             
-            // Add null terminator
-            llvm::Value* nullPos = Builder.CreateAdd(leftLen, llvm::ConstantInt::get(llvm::Type::getInt64Ty(ctx), 1));
-            llvm::Value* nullPosPtr = Builder.CreateInBoundsGEP(llvm::Type::getInt8Ty(ctx), resultPtr, nullPos);
-            Builder.CreateStore(llvm::ConstantInt::get(llvm::Type::getInt8Ty(ctx), 0), nullPosPtr);
+            IR->setInsertPoint(lenDone);
+            llvm::Value* finalLen = IR->load(strLen);
+            llvm::Value* newSize = IR->add(finalLen, IR->constI32(2));
+            llvm::Value* newSizeI64 = IR->intCast(newSize, IR->i64());
             
-            return resultPtr;
-        }
-        
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFAdd(Left, Right, "addtmp");
-        } else {
-            return Builder.CreateAdd(Left, Right, "addtmp");
+            llvm::Value* result = IR->malloc(IR->i8(), newSizeI64);
+            
+            llvm::Value* copyIdx = IR->var("copy_idx", IR->i32(), IR->constI32(0));
+            
+            llvm::BasicBlock* copyLoop = IR->createBlock("copy_loop");
+            llvm::BasicBlock* copyDone = IR->createBlock("copy_done");
+            llvm::BasicBlock* copyNext = IR->createBlock("copy_next");
+            
+            IR->branch(copyLoop);
+            IR->setInsertPoint(copyLoop);
+            
+            llvm::Value* idx = IR->load(copyIdx);
+            llvm::Value* shouldCopy = IR->lt(idx, finalLen);
+            IR->condBranch(shouldCopy, copyNext, copyDone);
+            
+            IR->setInsertPoint(copyNext);
+            llvm::Value* srcPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), Left, idx);
+            llvm::Value* dstPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, idx);
+            llvm::Value* copyChar = IR->load(srcPtr, IR->i8());
+            IR->store(copyChar, dstPtr);
+            llvm::Value* nextIdx = IR->add(idx, IR->constI32(1));
+            IR->store(nextIdx, copyIdx);
+            IR->branch(copyLoop);
+            
+            IR->setInsertPoint(copyDone);
+            llvm::Value* charPos = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, finalLen);
+            IR->store(Right, charPos);
+            llvm::Value* nullPos = IR->add(finalLen, IR->constI32(1));
+            llvm::Value* nullPtr = IR->getBuilder()->CreateInBoundsGEP(IR->i8(), result, nullPos);
+            IR->store(IR->constI8(0), nullPtr);
+            
+            return result;
         }
     } else if (BinOpNode->op == "-") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFSub(Left, Right, "subtmp");
-        } else {
-            return Builder.CreateSub(Left, Right, "subtmp");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->sub(Left, Right);
     } else if (BinOpNode->op == "*") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFMul(Left, Right, "multmp");
-        } else {
-            return Builder.CreateMul(Left, Right, "multmp");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->mul(Left, Right);
     } else if (BinOpNode->op == "/") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFDiv(Left, Right, "divtmp");
-        } else {
-            return Builder.CreateSDiv(Left, Right, "divtmp");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->div(Left, Right);
     } else if (BinOpNode->op == "%") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Modulo operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateSRem(Left, Right, "srem");
+        return IR->mod(Left, Right);
     } else if (BinOpNode->op == "<<") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Shift left operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateShl(Left, Right, "shltmp");
+        if (Left->getType()->isPointerTy() || Right->getType()->isPointerTy()) {
+            Write("Binary Expression", "Shift left operator not supported on pointer types" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return IR->shl(Left, Right);
     } else if (BinOpNode->op == ">>") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Shift right operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateAShr(Left, Right, "ashrtmp");
+        if (Left->getType()->isPointerTy() || Right->getType()->isPointerTy()) {
+            Write("Binary Expression", "Shift right operator not supported on pointer types" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return IR->ashr(Left, Right);
     } else if (BinOpNode->op == "&") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Bitwise AND operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateAnd(Left, Right, "andtmp");
+        return IR->bitAnd(Left, Right);
     } else if (BinOpNode->op == "|") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Bitwise OR operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateOr(Left, Right, "ortmp");
+        return IR->bitOr(Left, Right);
     } else if (BinOpNode->op == "^") {
         if (Left->getType()->isFloatingPointTy() || Right->getType()->isFloatingPointTy()) {
             Write("Binary Expression", "Bitwise XOR operator not supported on floating-point numbers" + Location, 2, true, true, "");
             return nullptr;
         }
-        return Builder.CreateXor(Left, Right, "xortmp");
+        return IR->bitXor(Left, Right);
     } else if (BinOpNode->op == ">=") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpOGE(Left, Right, "fcmp_ge");
-        } else {
-            return Builder.CreateICmpSGE(Left, Right, "icmp_ge");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->ge(Left, Right);
     } else if (BinOpNode->op == "<=") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpOLE(Left, Right, "fcmp_le");
-        } else {
-            return Builder.CreateICmpSLE(Left, Right, "icmp_le");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->le(Left, Right);
     } else if (BinOpNode->op == ">") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpOGT(Left, Right, "fcmp_gt");
-        } else {
-            return Builder.CreateICmpSGT(Left, Right, "icmp_gt");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->gt(Left, Right);
     } else if (BinOpNode->op == "<") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpOLT(Left, Right, "fcmp_lt");
-        } else {
-            return Builder.CreateICmpSLT(Left, Right, "icmp_lt");
-        }
+        promoteToCommonType(Left, Right);
+        return IR->lt(Left, Right);
     } else if (BinOpNode->op == "==") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpOEQ(Left, Right, "fcmp_eq");
+        if (Left->getType() != Right->getType()) {
+            if (Left->getType()->isIntegerTy() && Right->getType()->isIntegerTy()) {
+                unsigned leftBits = Left->getType()->getIntegerBitWidth();
+                unsigned rightBits = Right->getType()->getIntegerBitWidth();
+                if (leftBits < rightBits) {
+                    Left = IR->intCast(Left, Right->getType());
+                } else if (rightBits < leftBits) {
+                    Right = IR->intCast(Right, Left->getType());
+                }
+            } else {
+                promoteToCommonType(Left, Right);
+            }
         } else {
-            return Builder.CreateICmpEQ(Left, Right, "icmp_eq");
+            promoteToCommonType(Left, Right);
         }
+        return IR->eq(Left, Right);
     } else if (BinOpNode->op == "!=") {
-        llvm::Type* commonType = promoteToCommonType(Left, Right);
-        if (commonType && commonType->isFloatingPointTy()) {
-            return Builder.CreateFCmpONE(Left, Right, "fcmp_ne");
+        if (Left->getType() != Right->getType()) {
+            if (Left->getType()->isIntegerTy() && Right->getType()->isIntegerTy()) {
+                unsigned leftBits = Left->getType()->getIntegerBitWidth();
+                unsigned rightBits = Right->getType()->getIntegerBitWidth();
+                if (leftBits < rightBits) {
+                    Left = IR->intCast(Left, Right->getType());
+                } else if (rightBits < leftBits) {
+                    Right = IR->intCast(Right, Left->getType());
+                }
+            } else {
+                promoteToCommonType(Left, Right);
+            }
         } else {
-            return Builder.CreateICmpNE(Left, Right, "icmp_ne");
+            promoteToCommonType(Left, Right);
         }
+        return IR->ne(Left, Right);
     } else if (BinOpNode->op == "&&") {
         llvm::Value* leftBool = Left;
         llvm::Value* rightBool = Right;
@@ -444,24 +357,24 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         if (!Left->getType()->isIntegerTy(1)) {
             if (Left->getType()->isFloatingPointTy()) {
                 llvm::Value* zero = llvm::ConstantFP::get(Left->getType(), 0.0);
-                leftBool = Builder.CreateFCmpONE(Left, zero, "tobool");
+                leftBool = IR->getBuilder()->CreateFCmpONE(Left, zero);
             } else if (Left->getType()->isIntegerTy()) {
                 llvm::Value* zero = llvm::ConstantInt::get(Left->getType(), 0);
-                leftBool = Builder.CreateICmpNE(Left, zero, "tobool");
+                leftBool = IR->getBuilder()->CreateICmpNE(Left, zero);
             }
         }
         
         if (!Right->getType()->isIntegerTy(1)) {
             if (Right->getType()->isFloatingPointTy()) {
                 llvm::Value* zero = llvm::ConstantFP::get(Right->getType(), 0.0);
-                rightBool = Builder.CreateFCmpONE(Right, zero, "tobool");
+                rightBool = IR->getBuilder()->CreateFCmpONE(Right, zero);
             } else if (Right->getType()->isIntegerTy()) {
                 llvm::Value* zero = llvm::ConstantInt::get(Right->getType(), 0);
-                rightBool = Builder.CreateICmpNE(Right, zero, "tobool");
+                rightBool = IR->getBuilder()->CreateICmpNE(Right, zero);
             }
         }
         
-        return Builder.CreateAnd(leftBool, rightBool, "and");
+        return IR->and_(leftBool, rightBool);
     } else if (BinOpNode->op == "||") {
         llvm::Value* leftBool = Left;
         llvm::Value* rightBool = Right;
@@ -469,24 +382,24 @@ llvm::Value* GenerateBinaryOp(const std::unique_ptr<ASTNode>& Expr, llvm::IRBuil
         if (!Left->getType()->isIntegerTy(1)) {
             if (Left->getType()->isFloatingPointTy()) {
                 llvm::Value* zero = llvm::ConstantFP::get(Left->getType(), 0.0);
-                leftBool = Builder.CreateFCmpONE(Left, zero, "tobool");
+                leftBool = IR->getBuilder()->CreateFCmpONE(Left, zero);
             } else if (Left->getType()->isIntegerTy()) {
                 llvm::Value* zero = llvm::ConstantInt::get(Left->getType(), 0);
-                leftBool = Builder.CreateICmpNE(Left, zero, "tobool");
+                leftBool = IR->getBuilder()->CreateICmpNE(Left, zero);
             }
         }
         
         if (!Right->getType()->isIntegerTy(1)) {
             if (Right->getType()->isFloatingPointTy()) {
                 llvm::Value* zero = llvm::ConstantFP::get(Right->getType(), 0.0);
-                rightBool = Builder.CreateFCmpONE(Right, zero, "tobool");
+                rightBool = IR->getBuilder()->CreateFCmpONE(Right, zero);
             } else if (Right->getType()->isIntegerTy()) {
                 llvm::Value* zero = llvm::ConstantInt::get(Right->getType(), 0);
-                rightBool = Builder.CreateICmpNE(Right, zero, "tobool");
+                rightBool = IR->getBuilder()->CreateICmpNE(Right, zero);
             }
         }
         
-        return Builder.CreateOr(leftBool, rightBool, "or");
+        return IR->or_(leftBool, rightBool);
     } else {
         Write("Binary Expression", "Unsupported binary operator: " + BinOpNode->op + Location, 2, true, true, "");
         return nullptr;

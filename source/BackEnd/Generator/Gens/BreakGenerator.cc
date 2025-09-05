@@ -2,7 +2,7 @@
 
 std::stack<llvm::BasicBlock*> LoopExitStack;
 
-llvm::Value* GenerateBreak(const BreakNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateBreak(const BreakNode* Node, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Node) {
         Write("Break Generator", "Null BreakNode pointer", 2, true, true, "");
         return nullptr;
@@ -16,7 +16,5 @@ llvm::Value* GenerateBreak(const BreakNode* Node, llvm::IRBuilder<>& Builder, Sc
     }
 
     llvm::BasicBlock* LoopExit = LoopExitStack.top();
-    Builder.CreateBr(LoopExit);
-
-    return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+    return IR->branch(LoopExit);
 }

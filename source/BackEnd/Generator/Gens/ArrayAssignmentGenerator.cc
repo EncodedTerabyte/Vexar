@@ -1,24 +1,16 @@
 #include "ArrayAssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, AeroIR* IR, FunctionSymbols& Methods) {
     std::string StmtLocation = " at line " + std::to_string(ArrayAssign->token.line) + ", column " + std::to_string(ArrayAssign->token.column);
     
-    llvm::Value* rvalue = GenerateExpression(ArrayAssign->value, Builder, SymbolStack, Methods);
+    llvm::Value* rvalue = GenerateExpression(ArrayAssign->value, IR, Methods);
     if (!rvalue) {
         Write("Block Generator", "Invalid assignment value expression for array assignment" + StmtLocation, 2, true, true, "");
         return nullptr;
     }
 
-    llvm::Value* arrayPtr = nullptr;
-    for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-        auto found = it->find(ArrayAssign->identifier);
-        if (found != it->end()) {
-            arrayPtr = found->second;
-            break;
-        }
-    }
-    
+    llvm::Value* arrayPtr = IR->getVar(ArrayAssign->identifier);
     if (!arrayPtr) {
         Write("Block Generator", "Undefined array identifier: " + ArrayAssign->identifier + StmtLocation, 2, true, true, "");
         return nullptr;
@@ -33,6 +25,7 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
     llvm::Type* allocatedType = allocaInst->getAllocatedType();
     
     if (allocatedType->isPointerTy()) {
+<<<<<<< HEAD
         llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
         
         if (ArrayAssign->indexExpr->type == NodeType::Array) {
@@ -80,6 +73,59 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
                 llvm::Value* elementPtr = Builder.CreateInBoundsGEP(elementType, loadedPtr, flatIndex);
                 Builder.CreateStore(rvalue, elementPtr);
                 return rvalue;
+=======
+        llvm::Value* loadedPtr = IR->load(allocaInst);
+        llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, IR, Methods);
+        
+        if (!indexValue || !indexValue->getType()->isIntegerTy()) {
+            Write("Block Generator", "Invalid array index in heap array assignment" + StmtLocation, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Function* strlenFunc = IR->getRegisteredBuiltin("strlen");
+        if (!strlenFunc) {
+            IR->registerBuiltin("strlen", IR->i64(), {IR->i8ptr()});
+            strlenFunc = IR->getRegisteredBuiltin("strlen");
+        }
+        
+        llvm::Function* exitFunc = IR->getRegisteredBuiltin("exit");
+        if (!exitFunc) {
+            IR->registerBuiltin("exit", IR->void_t(), {IR->i32()});
+            exitFunc = IR->getRegisteredBuiltin("exit");
+        }
+        
+        llvm::Function* printfFunc = IR->getRegisteredBuiltin("printf");
+        if (!printfFunc) {
+            IR->registerBuiltin("printf", IR->i32(), {IR->i8ptr()});
+            printfFunc = IR->getRegisteredBuiltin("printf");
+        }
+        
+        llvm::Value* strLength = IR->call(strlenFunc, {loadedPtr});
+        llvm::Value* strLengthTrunc = IR->intCast(strLength, IR->i32());
+        llvm::Value* indexTrunc = indexValue;
+        if (indexValue->getType() != IR->i32()) {
+            indexTrunc = IR->intCast(indexValue, IR->i32());
+        }
+        
+        llvm::Value* isOutOfBounds = IR->ge(indexTrunc, strLengthTrunc);
+        
+        llvm::BasicBlock* errorBB = IR->createBlock("bounds_error");
+        llvm::BasicBlock* validBB = IR->createBlock("valid_access");
+        
+        IR->condBranch(isOutOfBounds, errorBB, validBB);
+        
+        IR->setInsertPoint(errorBB);
+        llvm::Value* errorMsg = IR->constString("Segmentation fault: string index out of bounds\n");
+        IR->call(printfFunc, {errorMsg});
+        IR->call(exitFunc, {IR->constI32(139)});
+        
+        IR->setInsertPoint(validBB);
+        
+        llvm::Value* charValue = rvalue;
+        if (rvalue->getType() != IR->i8()) {
+            if (rvalue->getType()->isIntegerTy()) {
+                charValue = IR->intCast(rvalue, IR->i8());
+>>>>>>> main
             } else {
                 Write("Block Generator", "Unsupported number of dimensions in heap array assignment" + StmtLocation, 2, true, true, "");
                 return nullptr;
@@ -174,16 +220,28 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
                 return rvalue;
             }
         }
+<<<<<<< HEAD
+=======
+        
+        llvm::Value* elementPtr = IR->arrayAccess(loadedPtr, indexValue);
+        IR->store(charValue, elementPtr);
+        return rvalue;
+>>>>>>> main
     }
     
     if (ArrayAssign->indexExpr->type == NodeType::Array) {
-        auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
+        ArrayNode* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAssign->indexExpr.get());
+        if (!IndexArrayPtr) {
+            Write("Block Generator", "Failed to cast to ArrayNode" + StmtLocation, 2, true, true, "");
+            return nullptr;
+        }
+        
         std::vector<llvm::Value*> indices;
-        indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+        indices.push_back(IR->constI32(0));
         
         llvm::Type* currentType = allocatedType;
         for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
-            llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+            llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], IR, Methods);
             if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                 Write("Block Generator", "Invalid array index in array assignment" + StmtLocation, 2, true, true, "");
                 return nullptr;
@@ -202,49 +260,37 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
             
             uint64_t arraySize = arrayType->getNumElements();
             
-            llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
+            llvm::Function* printfFunc = IR->getRegisteredBuiltin("printf");
             if (!printfFunc) {
-                llvm::FunctionType* printfType = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
-                    true
-                );
-                printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", Builder.GetInsertBlock()->getParent()->getParent());
+                IR->registerBuiltin("printf", IR->i32(), {IR->i8ptr()});
+                printfFunc = IR->getRegisteredBuiltin("printf");
             }
             
-            llvm::Function* exitFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("exit");
+            llvm::Function* exitFunc = IR->getRegisteredBuiltin("exit");
             if (!exitFunc) {
-                llvm::FunctionType* exitType = llvm::FunctionType::get(
-                    llvm::Type::getVoidTy(Builder.getContext()),
-                    {llvm::Type::getInt32Ty(Builder.getContext())},
-                    false
-                );
-                exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", Builder.GetInsertBlock()->getParent()->getParent());
+                IR->registerBuiltin("exit", IR->void_t(), {IR->i32()});
+                exitFunc = IR->getRegisteredBuiltin("exit");
             }
             
-            llvm::Value* arraySizeValue = llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+            llvm::Value* arraySizeValue = IR->constI32(arraySize);
             llvm::Value* indexTrunc = indexValue;
-            if (indexValue->getType() != Builder.getInt32Ty()) {
-                indexTrunc = Builder.CreateTrunc(indexValue, Builder.getInt32Ty());
+            if (indexValue->getType() != IR->i32()) {
+                indexTrunc = IR->intCast(indexValue, IR->i32());
             }
             
-            llvm::Value* isOutOfBounds = Builder.CreateICmpUGE(indexTrunc, arraySizeValue);
+            llvm::Value* isOutOfBounds = IR->ge(indexTrunc, arraySizeValue);
             
-            llvm::BasicBlock* currentBB = Builder.GetInsertBlock();
-            llvm::Function* function = currentBB->getParent();
-            llvm::BasicBlock* errorBB = llvm::BasicBlock::Create(Builder.getContext(), "array_bounds_error", function);
-            llvm::BasicBlock* validBB = llvm::BasicBlock::Create(Builder.getContext(), "valid_array_access", function);
+            llvm::BasicBlock* errorBB = IR->createBlock("array_bounds_error");
+            llvm::BasicBlock* validBB = IR->createBlock("valid_array_access");
             
-            Builder.CreateCondBr(isOutOfBounds, errorBB, validBB);
+            IR->condBranch(isOutOfBounds, errorBB, validBB);
             
-            Builder.SetInsertPoint(errorBB);
-            llvm::Value* errorMsg = Builder.CreateGlobalString("Segmentation fault: array index out of bounds\n", "array_seg_fault_msg");
-            llvm::Value* errorMsgPtr = Builder.CreatePointerCast(errorMsg, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(printfFunc, {errorMsgPtr});
-            Builder.CreateCall(exitFunc, {llvm::ConstantInt::get(Builder.getInt32Ty(), 139)});
-            Builder.CreateUnreachable();
+            IR->setInsertPoint(errorBB);
+            llvm::Value* errorMsg = IR->constString("Segmentation fault: array index out of bounds\n");
+            IR->call(printfFunc, {errorMsg});
+            IR->call(exitFunc, {IR->constI32(139)});
             
-            Builder.SetInsertPoint(validBB);
+            IR->setInsertPoint(validBB);
             
             indices.push_back(indexValue);
             currentType = arrayType->getElementType();
@@ -252,18 +298,18 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
         
         if (rvalue->getType() != currentType) {
             if (currentType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                rvalue = Builder.CreateFPToSI(rvalue, currentType);
+                rvalue = IR->cast(rvalue, currentType);
             } else if (currentType->isFloatTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                    rvalue = IR->cast(rvalue, currentType);
                 } else if (rvalue->getType()->isDoubleTy()) {
-                    rvalue = Builder.CreateFPTrunc(rvalue, currentType);
+                    rvalue = IR->floatCast(rvalue, currentType);
                 }
             } else if (currentType->isDoubleTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, currentType);
+                    rvalue = IR->cast(rvalue, currentType);
                 } else if (rvalue->getType()->isFloatTy()) {
-                    rvalue = Builder.CreateFPExt(rvalue, currentType);
+                    rvalue = IR->floatCast(rvalue, currentType);
                 }
             } else {
                 Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
@@ -271,12 +317,15 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
             }
         }
         
-        llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
-        Builder.CreateStore(rvalue, elementPtr);
+        llvm::Value* elementPtr = IR->arrayAccess(arrayPtr, indices[1]);
+        for (size_t i = 2; i < indices.size(); ++i) {
+            elementPtr = IR->arrayAccess(elementPtr, indices[i]);
+        }
+        IR->store(rvalue, elementPtr);
         return rvalue;
         
     } else {
-        llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, Builder, SymbolStack, Methods);
+        llvm::Value* indexValue = GenerateExpression(ArrayAssign->indexExpr, IR, Methods);
         if (!indexValue || !indexValue->getType()->isIntegerTy()) {
             Write("Block Generator", "Invalid array index in array assignment" + StmtLocation, 2, true, true, "");
             return nullptr;
@@ -295,65 +344,53 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
         
         uint64_t arraySize = arrayType->getNumElements();
         
-        llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
+        llvm::Function* printfFunc = IR->getRegisteredBuiltin("printf");
         if (!printfFunc) {
-            llvm::FunctionType* printfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
-                true
-            );
-            printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", Builder.GetInsertBlock()->getParent()->getParent());
+            IR->registerBuiltin("printf", IR->i32(), {IR->i8ptr()});
+            printfFunc = IR->getRegisteredBuiltin("printf");
         }
         
-        llvm::Function* exitFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("exit");
+        llvm::Function* exitFunc = IR->getRegisteredBuiltin("exit");
         if (!exitFunc) {
-            llvm::FunctionType* exitType = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(Builder.getContext()),
-                {llvm::Type::getInt32Ty(Builder.getContext())},
-                false
-            );
-            exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", Builder.GetInsertBlock()->getParent()->getParent());
+            IR->registerBuiltin("exit", IR->void_t(), {IR->i32()});
+            exitFunc = IR->getRegisteredBuiltin("exit");
         }
         
-        llvm::Value* arraySizeValue = llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+        llvm::Value* arraySizeValue = IR->constI32(arraySize);
         llvm::Value* indexTrunc = indexValue;
-        if (indexValue->getType() != Builder.getInt32Ty()) {
-            indexTrunc = Builder.CreateTrunc(indexValue, Builder.getInt32Ty());
+        if (indexValue->getType() != IR->i32()) {
+            indexTrunc = IR->intCast(indexValue, IR->i32());
         }
         
-        llvm::Value* isOutOfBounds = Builder.CreateICmpUGE(indexTrunc, arraySizeValue);
+        llvm::Value* isOutOfBounds = IR->ge(indexTrunc, arraySizeValue);
         
-        llvm::BasicBlock* currentBB = Builder.GetInsertBlock();
-        llvm::Function* function = currentBB->getParent();
-        llvm::BasicBlock* errorBB = llvm::BasicBlock::Create(Builder.getContext(), "array_bounds_error2", function);
-        llvm::BasicBlock* validBB = llvm::BasicBlock::Create(Builder.getContext(), "valid_array_access2", function);
+        llvm::BasicBlock* errorBB = IR->createBlock("array_bounds_error2");
+        llvm::BasicBlock* validBB = IR->createBlock("valid_array_access2");
         
-        Builder.CreateCondBr(isOutOfBounds, errorBB, validBB);
+        IR->condBranch(isOutOfBounds, errorBB, validBB);
         
-        Builder.SetInsertPoint(errorBB);
-        llvm::Value* errorMsg = Builder.CreateGlobalString("Segmentation fault: array index out of bounds\n", "array_seg_fault_msg2");
-        llvm::Value* errorMsgPtr = Builder.CreatePointerCast(errorMsg, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-        Builder.CreateCall(printfFunc, {errorMsgPtr});
-        Builder.CreateCall(exitFunc, {llvm::ConstantInt::get(Builder.getInt32Ty(), 139)});
-        Builder.CreateUnreachable();
+        IR->setInsertPoint(errorBB);
+        llvm::Value* errorMsg = IR->constString("Segmentation fault: array index out of bounds\n");
+        IR->call(printfFunc, {errorMsg});
+        IR->call(exitFunc, {IR->constI32(139)});
         
-        Builder.SetInsertPoint(validBB);
+        IR->setInsertPoint(validBB);
         
         llvm::Type* elementType = arrayType->getElementType();
         if (rvalue->getType() != elementType) {
             if (elementType->isIntegerTy(32) && rvalue->getType()->isFloatingPointTy()) {
-                rvalue = Builder.CreateFPToSI(rvalue, elementType);
+                rvalue = IR->cast(rvalue, elementType);
             } else if (elementType->isFloatTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                    rvalue = IR->cast(rvalue, elementType);
                 } else if (rvalue->getType()->isDoubleTy()) {
-                    rvalue = Builder.CreateFPTrunc(rvalue, elementType);
+                    rvalue = IR->floatCast(rvalue, elementType);
                 }
             } else if (elementType->isDoubleTy()) {
                 if (rvalue->getType()->isIntegerTy()) {
-                    rvalue = Builder.CreateSIToFP(rvalue, elementType);
+                    rvalue = IR->cast(rvalue, elementType);
                 } else if (rvalue->getType()->isFloatTy()) {
-                    rvalue = Builder.CreateFPExt(rvalue, elementType);
+                    rvalue = IR->floatCast(rvalue, elementType);
                 }
             } else {
                 Write("Block Generator", "Type mismatch in array assignment" + StmtLocation, 2, true, true, "");
@@ -361,13 +398,8 @@ llvm::Value* GenerateArrayAssignment(ArrayAssignmentNode* ArrayAssign, llvm::IRB
             }
         }
         
-        std::vector<llvm::Value*> indices = {
-            llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
-            indexValue
-        };
-        
-        llvm::Value* elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
-        Builder.CreateStore(rvalue, elementPtr);
+        llvm::Value* elementPtr = IR->arrayAccess(arrayPtr, indexValue);
+        IR->store(rvalue, elementPtr);
         return rvalue;
     }
 }

@@ -1,24 +1,6 @@
 #include "Miscellaneous/conf/FileAssociations.hh"
+#include "Miscellaneous/conf/TargetMap.hh"
 #include "CommandLine.hh"
-
-std::unordered_map<std::string, std::string> target_map = {
-    {"asm", "asm"}, {"assembly", "asm"}, {"s", "asm"},
-    {"llvm", "llvm"}, {"ir", "llvm"},
-    {"bitcode", "bitcode"}, {"bc", "bitcode"},
-    {"obj", "obj"}, {"object", "obj"}, {"o", "obj"},
-
-    {"win", "x86_64-pc-windows-msvc"}, {"exe", "x86_64-pc-windows-msvc"}, {"windows", "x86_64-pc-windows-msvc"}, {"win64", "x86_64-pc-windows-msvc"}, {"win-msvc", "x86_64-pc-windows-msvc"},
-
-    {"win-gnu", "x86_64-pc-windows-gnu"}, {"mingw", "x86_64-pc-windows-gnu"},
-    
-    //{"linux", "x86_64-pc-linux-gnu"}, {"gnu", "x86_64-pc-linux-gnu"},
-
-    //{"mac", "x86_64-apple-darwin"}, {"macos", "x86_64-apple-darwin"}, {"darwin", "x86_64-apple-darwin"},
-    //{"mac-arm64", "arm64-apple-darwin"}, {"macos-arm64", "arm64-apple-darwin"},
-
-    //{"wasm", "wasm32-unknown-unknown"}, {"webassembly", "wasm32-unknown-unknown"}, {"web", "wasm32-unknown-unknown"},
-    //{"wasm-wasi", "wasm32-wasi"}, {"wasi", "wasm32-wasi"},
-};
 
 std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
     auto split = [](const std::string& s, char delim) -> std::vector<std::string> {
@@ -38,6 +20,9 @@ std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
         } else if (std::string(argv[1]) == "--v" || std::string(argv[1]) == "--version") {
             In->UsingMenu = true;
             In->VersionMenu = true;
+        } else if (std::string(argv[1]) == "--t" || std::string(argv[1]) == "--targets") {
+            In->UsingMenu = true;
+            In->TargetsMenu = true;
         }
     }
 
@@ -47,16 +32,37 @@ std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
         std::string arg = argv[i];
         bool recognized = false;
 
-        if (arg == "-o") {
+        if (arg == "-o" || arg == "--output") {
             if (i + 1 < argc) In->OutputFile = argv[++i];
             recognized = true;
-        } else if (arg == "-g") { In->Debug = true; recognized = true; }
-        else if (arg == "-v") { In->Verbose = true; recognized = true; }
-        else if (arg == "-w") { In->EmitWarnings = true; recognized = true; }
-        else if (arg == "--run") { In->RunAfterCompile = true; recognized = true; }
-        else if (arg == "--print_tokens") { In->PrintTokens = true; recognized = true; }
-        else if (arg == "--print_ast") { In->PrintAST = true; recognized = true; }
-        else if (arg.find("--target=") != std::string::npos) {
+        } 
+
+        else if (arg == "-f" || arg == "--full-analysis")   { In->DumpBIN = true; In->DumpIR = true; In->DumpASM = true; In->DumpIR; In->DumpVec = true; In->DumpOp = true; In->DumpSym = true; In->DumpMem = true; In->DumpMod = true; In->DumpTokens = true; In->DumpAST = true; In->DumpBC = true; In->DumpVBC = true; In->DumpVIR; recognized = true;}
+        else if (arg == "-m" || arg == "--module")          { In->DumpMod = true; recognized = true;}
+        else if (arg == "-s" || arg == "--symbols")         { In->DumpSym = true; recognized = true;}
+        else if (arg == "-opt" || arg == "--optimizations") { In->DumpOp = true; recognized = true;}
+        else if (arg == "-vec" || arg == "--vectorization") { In->DumpVec = true; recognized = true;}
+        else if (arg == "-e" || arg == "--memory")          { In->DumpMem = true; recognized = true;}
+        else if (arg == "-b" || arg == "--bin")             { In->DumpBIN = true; recognized = true;}
+        else if (arg == "-d" || arg == "--dump")            { In->DumpASM = true; recognized = true;}
+        else if (arg == "-bc" || arg == "--dump-bc")        { In->DumpBC = true; recognized = true;}
+        else if (arg == "-vbc" || arg == "--dump-verbose-bc"){ In->DumpVBC = true; recognized = true;}
+        else if (arg == "-ir" || arg == "--dump-ir")        { In->DumpIR = true; recognized = true;}
+        else if (arg == "-vir" || arg == "--dump-verbose-ir"){ In->DumpVIR = true; recognized = true;}
+        else if (arg == "-c" || arg == "--check")           { In->Check = true; recognized = true; }
+        else if (arg == "-t" || arg == "--print_tokens")    { In->DumpTokens = true; recognized = true; }
+        else if (arg == "-a" || arg == "--print_ast")       { In->DumpAST = true; recognized = true; }
+        else if (arg == "-g" || arg == "--debug")           { In->Debug = true; recognized = true; }
+        else if (arg == "-v" || arg == "--verbose")         { In->Verbose = true; recognized = true; }
+
+        else if (arg == "-r" || arg == "--run")             { In->RunAfterCompile = true; recognized = true; }
+        else if (arg == "-w" || arg == "--no-warnings")     { In->EmitWarnings = true; recognized = true; }
+        
+        else if (arg == "-I" || arg == "--include") {
+            recognized = true;
+        }
+        
+        else if ((arg.find("--target=") != std::string::npos) || (arg.find("-t=") != std::string::npos)) {
             recognized = true;
             auto target = split(arg, '=').back();
 
@@ -68,7 +74,7 @@ std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]) {
         } 
         else if (arg.rfind("-O", 0) == 0) {
             std::string level = arg.substr(2);
-            In->OptimizationLevel = (!level.empty() && isdigit(level[0])) ? std::clamp(level[0] - '0', 0, 3) : 0;
+            In->OptimizationLevel = (!level.empty() && isdigit(level[0])) ? std::clamp(level[0] - '0', 0, 5) : 0;
             recognized = true;
         } else {
             fs::path possibleFile = cwd / arg;

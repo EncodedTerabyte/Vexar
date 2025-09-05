@@ -1,7 +1,7 @@
 #include "UnaryAssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, AeroIR* IR, FunctionSymbols& Methods) {
     std::string StmtLocation = " at line " + std::to_string(UnaryOp->token.line) + ", column " + std::to_string(UnaryOp->token.column);
     
     if (!UnaryOp) {
@@ -17,14 +17,7 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
     if (UnaryOp->operand->type == NodeType::ArrayAccess) {
         auto* ArrayAccess = static_cast<ArrayAccessNode*>(UnaryOp->operand.get());
         
-        llvm::Value* arrayPtr = nullptr;
-        for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-            auto found = it->find(ArrayAccess->identifier);
-            if (found != it->end()) {
-                arrayPtr = found->second;
-                break;
-            }
-        }
+        llvm::Value* arrayPtr = IR->getVar(ArrayAccess->identifier);
         
         if (!arrayPtr) {
             Write("Block Generator", "Undefined array identifier: " + ArrayAccess->identifier + StmtLocation, 2, true, true, "");
@@ -42,8 +35,8 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
         llvm::Type* elementType = nullptr;
         
         if (allocatedType->isPointerTy()) {
-            llvm::Value* heapArrayPtr = Builder.CreateLoad(allocatedType, allocaInst);
-            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+            llvm::Value* heapArrayPtr = IR->load(allocaInst);
+            llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, IR, Methods);
             
             if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                 Write("Block Generator", "Invalid array index in heap array unary assignment" + StmtLocation, 2, true, true, "");
@@ -51,16 +44,16 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
             }
             
             elementType = allocatedType;
-            elementPtr = Builder.CreateInBoundsGEP(elementType, heapArrayPtr, indexValue);
+            elementPtr = IR->arrayAccess(heapArrayPtr, indexValue);
         } else {
             if (ArrayAccess->expr->type == NodeType::Array) {
                 auto* IndexArrayPtr = static_cast<ArrayNode*>(ArrayAccess->expr.get());
                 std::vector<llvm::Value*> indices;
-                indices.push_back(llvm::ConstantInt::get(Builder.getInt32Ty(), 0));
+                indices.push_back(IR->constI32(0));
                 
                 llvm::Type* currentType = allocatedType;
                 for (size_t i = 0; i < IndexArrayPtr->elements.size(); ++i) {
-                    llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], Builder, SymbolStack, Methods);
+                    llvm::Value* indexValue = GenerateExpression(IndexArrayPtr->elements[i], IR, Methods);
                     if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                         Write("Block Generator", "Invalid array index in unary assignment" + StmtLocation, 2, true, true, "");
                         return nullptr;
@@ -91,9 +84,9 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
                 }
                 
                 elementType = currentType;
-                elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                elementPtr = IR->getBuilder()->CreateInBoundsGEP(allocatedType, arrayPtr, indices);
             } else {
-                llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, Builder, SymbolStack, Methods);
+                llvm::Value* indexValue = GenerateExpression(ArrayAccess->expr, IR, Methods);
                 if (!indexValue || !indexValue->getType()->isIntegerTy()) {
                     Write("Block Generator", "Invalid array index in unary assignment" + StmtLocation, 2, true, true, "");
                     return nullptr;
@@ -121,15 +114,15 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
                 
                 elementType = arrayType->getElementType();
                 std::vector<llvm::Value*> indices = {
-                    llvm::ConstantInt::get(Builder.getInt32Ty(), 0),
+                    IR->constI32(0),
                     indexValue
                 };
                 
-                elementPtr = Builder.CreateInBoundsGEP(allocatedType, arrayPtr, indices);
+                elementPtr = IR->getBuilder()->CreateInBoundsGEP(allocatedType, arrayPtr, indices);
             }
         }
         
-        llvm::Value* currentValue = Builder.CreateLoad(elementType, elementPtr);
+        llvm::Value* currentValue = IR->load(elementPtr);
         
         llvm::Value* one;
         if (elementType->isFloatingPointTy()) {
@@ -140,33 +133,18 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
         
         llvm::Value* result;
         if (UnaryOp->op == "++") {
-            if (elementType->isFloatingPointTy()) {
-                result = Builder.CreateFAdd(currentValue, one);
-            } else {
-                result = Builder.CreateAdd(currentValue, one);
-            }
+            result = IR->add(currentValue, one);
         } else {
-            if (elementType->isFloatingPointTy()) {
-                result = Builder.CreateFSub(currentValue, one);
-            } else {
-                result = Builder.CreateSub(currentValue, one);
-            }
+            result = IR->sub(currentValue, one);
         }
         
-        Builder.CreateStore(result, elementPtr);
+        IR->store(result, elementPtr);
         return result;
         
     } else if (UnaryOp->operand->type == NodeType::Identifier) {
         auto* Ident = static_cast<IdentifierNode*>(UnaryOp->operand.get());
         
-        llvm::Value* varPtr = nullptr;
-        for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-            auto found = it->find(Ident->name);
-            if (found != it->end()) {
-                varPtr = found->second;
-                break;
-            }
-        }
+        llvm::Value* varPtr = IR->getVar(Ident->name);
         
         if (!varPtr) {
             Write("Block Generator", "Undefined variable: " + Ident->name + StmtLocation, 2, true, true, "");
@@ -180,7 +158,7 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
         }
         
         llvm::Type* varType = allocaInst->getAllocatedType();
-        llvm::Value* currentValue = Builder.CreateLoad(varType, allocaInst);
+        llvm::Value* currentValue = IR->load(allocaInst);
         
         llvm::Value* one;
         if (varType->isFloatingPointTy()) {
@@ -191,20 +169,12 @@ llvm::Value* GenerateUnaryAssignment(UnaryOpNode* UnaryOp, llvm::IRBuilder<>& Bu
         
         llvm::Value* result;
         if (UnaryOp->op == "++") {
-            if (varType->isFloatingPointTy()) {
-                result = Builder.CreateFAdd(currentValue, one);
-            } else {
-                result = Builder.CreateAdd(currentValue, one);
-            }
+            result = IR->add(currentValue, one);
         } else {
-            if (varType->isFloatingPointTy()) {
-                result = Builder.CreateFSub(currentValue, one);
-            } else {
-                result = Builder.CreateSub(currentValue, one);
-            }
+            result = IR->sub(currentValue, one);
         }
         
-        Builder.CreateStore(result, allocaInst);
+        IR->store(result, allocaInst);
         return result;
         
     } else {

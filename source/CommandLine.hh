@@ -16,27 +16,40 @@ namespace fs = std::filesystem;
 
 struct CLIObject {
 public:
-    bool PrintTokens = false;
-    bool PrintAST = false;
-
+// front end
     std::map<unsigned int, std::string> FileContents;
     std::vector<Token> ProgramTokens;
     std::unique_ptr<ProgramNode> ProgramAST;
     int ExitCode;
-
+// compiler info
     fs::path InputFile;
     fs::path OutputFile;
     int OptimizationLevel = 0;
-    bool Debug = false;
-    bool Verbose = false;
     bool RunAfterCompile = false;
     bool EmitWarnings = false;
-    
+    std::string CompilerTarget = "";
+// debug
+    bool Debug = false;
+    bool Verbose = false;
+    bool Check = false;
+    bool DumpIR = false;
+    bool DumpASM = false;
+    bool DumpBIN = false;
+    bool DumpVec = false;
+    bool DumpOp = false;
+    bool DumpSym = false;
+    bool DumpMem = false;
+    bool DumpMod = false;
+    bool DumpTokens = false;
+    bool DumpAST = false;
+    bool DumpVIR = false;
+    bool DumpBC = false;
+    bool DumpVBC = false;
+// menu
     bool UsingMenu = false;
     bool HelpMenu = false;
     bool VersionMenu = false;
-    
-    std::string CompilerTarget = "";
+    bool TargetsMenu = false;
 };
 
 std::unique_ptr<CLIObject> CommandLineHandler(int argc, char* argv[]);

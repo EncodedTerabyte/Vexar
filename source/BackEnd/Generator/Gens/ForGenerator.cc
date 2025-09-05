@@ -5,7 +5,7 @@
 #include "ExpressionGenerator.hh"
 #include "VariableGenerator.hh"
 
-llvm::Value* GenerateFor(ForNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) {
+llvm::Value* GenerateFor(ForNode* Node, AeroIR* IR, FunctionSymbols& Methods) {
     if (!Node) {
         Write("For Generator", "Null ForNode pointer", 2, true, true, "");
         return nullptr;
@@ -13,60 +13,60 @@ llvm::Value* GenerateFor(ForNode* Node, llvm::IRBuilder<>& Builder, ScopeStack& 
 
     std::string Location = " at line " + std::to_string(Node->token.line) + ", column " + std::to_string(Node->token.column);
 
-    llvm::Function* CurrentFunction = Builder.GetInsertBlock()->getParent();
+    llvm::Function* CurrentFunction = IR->getBuilder()->GetInsertBlock()->getParent();
     if (!CurrentFunction) {
         Write("For Generator", "No current function for for loop" + Location, 2, true, true, "");
         return nullptr;
     }
 
-    PushScope(SymbolStack);
+    IR->pushScope();
 
-    llvm::BasicBlock* ForHeader = llvm::BasicBlock::Create(Builder.getContext(), "for.header", CurrentFunction);
-    llvm::BasicBlock* ForBody = llvm::BasicBlock::Create(Builder.getContext(), "for.body", CurrentFunction);
-    llvm::BasicBlock* ForIncrement = llvm::BasicBlock::Create(Builder.getContext(), "for.increment", CurrentFunction);
-    llvm::BasicBlock* ForExit = llvm::BasicBlock::Create(Builder.getContext(), "for.exit", CurrentFunction);
+    llvm::BasicBlock* ForHeader = IR->createBlock("for.header");
+    llvm::BasicBlock* ForBody = IR->createBlock("for.body");
+    llvm::BasicBlock* ForIncrement = IR->createBlock("for.increment");
+    llvm::BasicBlock* ForExit = IR->createBlock("for.exit");
 
     if (Node->init) {
         if (Node->init->type == NodeType::Variable) {
             auto* VarNode = static_cast<VariableNode*>(Node->init.get());
-            GenerateVariable(VarNode, Builder, SymbolStack, Methods);
+            GenerateVariable(VarNode, IR, Methods);
         } else {
-            GenerateExpression(Node->init, Builder, SymbolStack, Methods);
+            GenerateExpression(Node->init, IR, Methods);
         }
     }
 
-    Builder.CreateBr(ForHeader);
-    Builder.SetInsertPoint(ForHeader);
+    IR->branch(ForHeader);
+    IR->setInsertPoint(ForHeader);
 
     if (Node->condition) {
-        llvm::Value* Condition = GenerateCondition(Node->condition.get(), Builder, SymbolStack, Methods);
+        llvm::Value* Condition = GenerateCondition(Node->condition.get(), IR, Methods);
         if (!Condition) {
             Write("For Generator", "Failed to generate for condition" + Location, 2, true, true, "");
-            PopScope(SymbolStack);
+            IR->popScope();
             return nullptr;
         }
-        Builder.CreateCondBr(Condition, ForBody, ForExit);
+        IR->condBranch(Condition, ForBody, ForExit);
     } else {
-        Builder.CreateBr(ForBody);
+        IR->branch(ForBody);
     }
 
-    Builder.SetInsertPoint(ForBody);
+    IR->setInsertPoint(ForBody);
     LoopExitStack.push(ForExit);
-    GenerateBlock(Node->body, Builder, SymbolStack, Methods);
+    GenerateBlock(Node->body, IR, Methods);
     LoopExitStack.pop();
 
-    if (!Builder.GetInsertBlock()->getTerminator()) {
-        Builder.CreateBr(ForIncrement);
+    if (!IR->getBuilder()->GetInsertBlock()->getTerminator()) {
+        IR->branch(ForIncrement);
     }
 
-    Builder.SetInsertPoint(ForIncrement);
+    IR->setInsertPoint(ForIncrement);
     if (Node->increment) {
-        GenerateExpression(Node->increment, Builder, SymbolStack, Methods);
+        GenerateExpression(Node->increment, IR, Methods);
     }
-    Builder.CreateBr(ForHeader);
+    IR->branch(ForHeader);
 
-    Builder.SetInsertPoint(ForExit);
-    PopScope(SymbolStack);
+    IR->setInsertPoint(ForExit);
+    IR->popScope();
     
-    return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+    return IR->constI32(0);
 }

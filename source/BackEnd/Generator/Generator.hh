@@ -1,7 +1,8 @@
 #pragma once
 
+#include "AeroIR/source/AeroIR.hh"
 #include "LLVMHeader.hh"
-#include "Helper/Mapping.hh"
+#include "Helper/Types.hh"
 
 struct GL_ASTPackage {
     fs::path InputFile;
@@ -12,8 +13,9 @@ struct GL_ASTPackage {
 
     bool Debug;
     bool Verbose;
+    bool RunAfterCompile;
 
-    std::string Target;
+    std::string CompilerTarget;
 };
 
 class Generator {
@@ -25,41 +27,41 @@ private:
         fs::path OutputFile;
 
         int Optimisation = 0;
-        bool Debug, Verbose;
+        bool Debug, Verbose, RunAfterCompile;
 
-        std::string Target;
+        std::string CompilerTarget;
     };
 
     struct CompilerInstance {
         FunctionSymbols FSymbolTable;
-        AllocaSymbols ASymbolTable;
-        std::unique_ptr<llvm::Module> IModule;
-        llvm::LLVMContext IContext;
-        llvm::IRBuilder<> IBuilder;
-        
+        std::unique_ptr<AeroIR> IR;
         std::unique_ptr<ProgramNode> ASTRoot;
         FunctionNode MainFunc;
         
-        CompilerInstance() : IBuilder(IContext) {}
+        CompilerInstance() {}
     };
 
     CompilerInstance CInstance;
     ASTPackage ASTPkg;
 public:
     llvm::Module* GetModulePtr() {
-        return this->CInstance.IModule.get();
+        return this->CInstance.IR->getModule();
     }
 
     std::unique_ptr<llvm::Module> TakeModule() {
-        return std::move(this->CInstance.IModule);
+        return std::unique_ptr<llvm::Module>(this->CInstance.IR->getModule());
     }
 
     llvm::LLVMContext& GetContext() {
-        return this->CInstance.IContext;
+        return *this->CInstance.IR->getContext();
     }
 
     llvm::IRBuilder<>& GetBuilder() {
-        return this->CInstance.IBuilder;
+        return *this->CInstance.IR->getBuilder();
+    }
+
+    AeroIR* GetIR() {
+        return this->CInstance.IR.get();
     }
 
     ProgramNode* GetASTRoot() {
@@ -72,11 +74,9 @@ public:
 
     Generator(GL_ASTPackage& pkg);
 
-    void BuildLLVM();
-    void PrintLLVM();
-    void ValidateModule(bool EmitWarnings);
-    void OptimiseLLVM();
-    void CompileTriple(std::string Triple);
-    void Link(fs::path ObjectFile);
-
+    void BuildModule();
+    void PrintModule();
+    bool ValidateModule();
+    void OptimiseModule();
+    void CompileTriple();
 };

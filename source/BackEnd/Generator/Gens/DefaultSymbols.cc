@@ -5,24 +5,24 @@
 void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
     if (!Builtins.empty()) return;
 
-    Builtins["print"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["print"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for print function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
+        llvm::Function* printfFunc = IR->getModule()->getFunction("printf");
         if (!printfFunc) {
             llvm::FunctionType* printfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                IR->i32(),
+                {IR->ptr(IR->i8())},
                 true
             );
-            printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", Builder.GetInsertBlock()->getParent()->getParent());
+            printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", IR->getModule());
         }
         
         std::vector<llvm::Value*> printfArgs;
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -31,68 +31,63 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         }
         
         if (ArgValue->getType()->isIntegerTy(32)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%d");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isFloatingPointTy()) {
             if (ArgValue->getType()->isFloatTy()) {
-                ArgValue = Builder.CreateFPExt(ArgValue, Builder.getDoubleTy());
+                ArgValue = IR->floatCast(ArgValue, IR->f64());
             }
-            llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%.6f");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isPointerTy()) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%s", "str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%s");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(8)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%c", "char_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%c");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(1)) {
-            llvm::Value* boolAsInt = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* zero = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
-            llvm::Value* isZero = Builder.CreateICmpEQ(boolAsInt, zero);
+            llvm::Value* boolAsInt = IR->intCast(ArgValue, IR->i32());
+            llvm::Value* zero = IR->constI32(0);
+            llvm::Value* isZero = IR->eq(boolAsInt, zero);
             
-            llvm::Value* trueStr = Builder.CreateGlobalString("true", "true_str");
-            llvm::Value* falseStr = Builder.CreateGlobalString("false", "false_str");
-            llvm::Value* selectedStr = Builder.CreateSelect(isZero, falseStr, trueStr);
+            llvm::Value* trueStr = IR->constString("true");
+            llvm::Value* falseStr = IR->constString("false");
+            llvm::Value* selectedStr = IR->getBuilder()->CreateSelect(isZero, falseStr, trueStr);
             
-            llvm::Value* formatStr = Builder.CreateGlobalString("%s", "bool_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%s");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(selectedStr);
         } else {
             Write("Expression Generation", "Unsupported argument type for print" + Location, 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* CallResult = Builder.CreateCall(printfFunc, printfArgs);
-        return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+        IR->call(printfFunc, printfArgs);
+        return IR->constI32(0);
     };
     
-    Builtins["println"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["println"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for println function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Function* printfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("printf");
+        llvm::Function* printfFunc = IR->getModule()->getFunction("printf");
         if (!printfFunc) {
             llvm::FunctionType* printfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                IR->i32(),
+                {IR->ptr(IR->i8())},
                 true
             );
-            printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", Builder.GetInsertBlock()->getParent()->getParent());
+            printfFunc = llvm::Function::Create(printfType, llvm::Function::ExternalLinkage, "printf", IR->getModule());
         }
         
         std::vector<llvm::Value*> printfArgs;
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -101,82 +96,82 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         }
         
         if (ArgValue->getType()->isIntegerTy(32)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d\n", "int_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%d\n");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isFloatingPointTy()) {
             if (ArgValue->getType()->isFloatTy()) {
-                ArgValue = Builder.CreateFPExt(ArgValue, Builder.getDoubleTy());
+                ArgValue = IR->floatCast(ArgValue, IR->f64());
             }
-            llvm::Value* formatStr = Builder.CreateGlobalString("%.6f\n", "float_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%.6f\n");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isPointerTy()) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%s\n", "str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%s\n");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(8)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%c\n", "char_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%c\n");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(ArgValue);
         } else if (ArgValue->getType()->isIntegerTy(1)) {
-            llvm::Value* boolAsInt = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* zero = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
-            llvm::Value* isZero = Builder.CreateICmpEQ(boolAsInt, zero);
+            llvm::Value* boolAsInt = IR->intCast(ArgValue, IR->i32());
+            llvm::Value* zero = IR->constI32(0);
+            llvm::Value* isZero = IR->eq(boolAsInt, zero);
             
-            llvm::Value* trueStr = Builder.CreateGlobalString("true\n", "true_str_ln");
-            llvm::Value* falseStr = Builder.CreateGlobalString("false\n", "false_str_ln");
-            llvm::Value* selectedStr = Builder.CreateSelect(isZero, falseStr, trueStr);
+            llvm::Value* trueStr = IR->constString("true\n");
+            llvm::Value* falseStr = IR->constString("false\n");
+            llvm::Value* selectedStr = IR->getBuilder()->CreateSelect(isZero, falseStr, trueStr);
             
-            llvm::Value* formatStr = Builder.CreateGlobalString("%s", "bool_fmt_ln");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            printfArgs.push_back(formatPtr);
+            llvm::Value* formatStr = IR->constString("%s");
+            printfArgs.push_back(formatStr);
             printfArgs.push_back(selectedStr);
         } else {
             Write("Expression Generation", "Unsupported argument type for println" + Location, 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* CallResult = Builder.CreateCall(printfFunc, printfArgs);
-        return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+        IR->call(printfFunc, printfArgs);
+        return IR->constI32(0);
     };
 
-    Builtins["input"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-        llvm::Function* scanfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("scanf");
+
+    Builtins["input"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+        llvm::Function* scanfFunc = IR->getModule()->getFunction("scanf");
         if (!scanfFunc) {
             llvm::FunctionType* scanfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                IR->i32(),
+                {IR->ptr(IR->i8())},
                 true
             );
-            scanfFunc = llvm::Function::Create(scanfType, llvm::Function::ExternalLinkage, "scanf", Builder.GetInsertBlock()->getParent()->getParent());
+            scanfFunc = llvm::Function::Create(scanfType, llvm::Function::ExternalLinkage, "scanf", IR->getModule());
         }
         
+<<<<<<< HEAD
         llvm::Value* bufferSize = llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 256);
         llvm::Value* bufferPtr = gc.GenerateTrackedMalloc(Builder, bufferSize);
+=======
+        llvm::Value* bufferSize = IR->constI64(256);
+        llvm::Value* bufferPtr = IR->malloc(IR->i8(), bufferSize);
+>>>>>>> main
         if (!bufferPtr) {
             Write("Expression Generation", "Failed to allocate buffer for input function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* formatStr = Builder.CreateGlobalString(" %255[^\n]", "input_fmt");
-        llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
+        llvm::Value* formatStr = IR->constString("%255s");
+        IR->call(scanfFunc, {formatStr, bufferPtr});
         
-        llvm::Value* CallResult = Builder.CreateCall(scanfFunc, {formatPtr, bufferPtr});
         return bufferPtr;
     };
-    
-    Builtins["type"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+
+    Builtins["type"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for type function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -204,17 +199,16 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             Write("Expression Generation", "Unsupported argument type for type function" + Location, 1, true, true, "");
         }
         
-        llvm::Value* Result = Builder.CreateGlobalString(typeStr, "type_result");
-        return Result;
+        return IR->constString(typeStr);
     };
 
-    Builtins["str"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["toString"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for str function", 2, true, true, "");
             return nullptr;
         }
     
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -224,45 +218,44 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         
         llvm::Type* ArgType = ArgValue->getType();
 
-        llvm::Function* sprintfFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("sprintf");
+        llvm::Function* sprintfFunc = IR->getModule()->getFunction("sprintf");
         if (!sprintfFunc) {
             llvm::FunctionType* sprintfType = llvm::FunctionType::get(
-                llvm::Type::getInt32Ty(Builder.getContext()),
-                {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0), 
-                llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                IR->i32(),
+                {IR->ptr(IR->i8()), IR->ptr(IR->i8())},
                 true
             );
-            sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", Builder.GetInsertBlock()->getParent()->getParent());
+            sprintfFunc = llvm::Function::Create(sprintfType, llvm::Function::ExternalLinkage, "sprintf", IR->getModule());
         }
 
+<<<<<<< HEAD
         llvm::Value* bufferPtr = gc.GenerateTrackedMalloc(Builder, llvm::ConstantInt::get(llvm::Type::getInt64Ty(Builder.getContext()), 32));
+=======
+        llvm::Value* bufferPtr = IR->malloc(IR->i8(), IR->constI64(32));
+>>>>>>> main
         if (!bufferPtr) {
             Write("Expression Generation", "Failed to allocate buffer for str function" + Location, 2, true, true, "");
             return nullptr;
         }
         
         if (ArgType->isIntegerTy(32)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d", "int_to_str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, ArgValue});
+            llvm::Value* formatStr = IR->constString("%d");
+            IR->call(sprintfFunc, {bufferPtr, formatStr, ArgValue});
         } else if (ArgType->isIntegerTy(8)) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%c", "char_to_str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, ArgValue});
+            llvm::Value* formatStr = IR->constString("%c");
+            IR->call(sprintfFunc, {bufferPtr, formatStr, ArgValue});
         } else if (ArgType->isIntegerTy(1)) {
-            llvm::Value* extendedValue = Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
-            llvm::Value* formatStr = Builder.CreateGlobalString("%d", "bool_to_str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
-            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, extendedValue});
+            llvm::Value* extendedValue = IR->intCast(ArgValue, IR->i32());
+            llvm::Value* formatStr = IR->constString("%d");
+            IR->call(sprintfFunc, {bufferPtr, formatStr, extendedValue});
         } else if (ArgType->isFloatingPointTy()) {
-            llvm::Value* formatStr = Builder.CreateGlobalString("%.6f", "float_to_str_fmt");
-            llvm::Value* formatPtr = Builder.CreatePointerCast(formatStr, llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0));
+            llvm::Value* formatStr = IR->constString("%.6f");
             
             if (ArgValue->getType()->isFloatTy()) {
-                ArgValue = Builder.CreateFPExt(ArgValue, Builder.getDoubleTy());
+                ArgValue = IR->floatCast(ArgValue, IR->f64());
             }
             
-            Builder.CreateCall(sprintfFunc, {bufferPtr, formatPtr, ArgValue});
+            IR->call(sprintfFunc, {bufferPtr, formatStr, ArgValue});
         } else if (ArgType->isPointerTy()) {
             return ArgValue;
         } else {
@@ -273,13 +266,13 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         return bufferPtr;
     };
 
-    Builtins["int"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["int"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for int function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -292,35 +285,35 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         if (ArgType->isIntegerTy(32)) {
             return ArgValue;
         } else if (ArgType->isFloatingPointTy()) {
-            return Builder.CreateFPToSI(ArgValue, Builder.getInt32Ty());
+            return IR->getBuilder()->CreateFPToSI(ArgValue, IR->i32());
         } else if (ArgType->isIntegerTy(8)) {
-            return Builder.CreateSExt(ArgValue, Builder.getInt32Ty());
+            return IR->intCast(ArgValue, IR->i32());
         } else if (ArgType->isIntegerTy(1)) {
-            return Builder.CreateZExt(ArgValue, Builder.getInt32Ty());
+            return IR->intCast(ArgValue, IR->i32());
         } else if (ArgType->isPointerTy()) {
-            llvm::Function* atoiFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("atoi");
+            llvm::Function* atoiFunc = IR->getModule()->getFunction("atoi");
             if (!atoiFunc) {
                 llvm::FunctionType* atoiType = llvm::FunctionType::get(
-                    llvm::Type::getInt32Ty(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    IR->i32(),
+                    {IR->ptr(IR->i8())},
                     false
                 );
-                atoiFunc = llvm::Function::Create(atoiType, llvm::Function::ExternalLinkage, "atoi", Builder.GetInsertBlock()->getParent()->getParent());
+                atoiFunc = llvm::Function::Create(atoiType, llvm::Function::ExternalLinkage, "atoi", IR->getModule());
             }
-            return Builder.CreateCall(atoiFunc, {ArgValue});
+            return IR->call(atoiFunc, {ArgValue});
         } else {
             Write("Expression Generation", "Unsupported argument type for int function" + Location, 2, true, true, "");
             return nullptr;
         }
     };
 
-    Builtins["float"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["float"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for float function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -333,28 +326,28 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         if (ArgType->isFloatTy()) {
             return ArgValue;
         } else if (ArgType->isDoubleTy()) {
-            return Builder.CreateFPTrunc(ArgValue, Builder.getFloatTy());
+            return IR->floatCast(ArgValue, IR->f32());
         } else if (ArgType->isIntegerTy()) {
-            return Builder.CreateSIToFP(ArgValue, Builder.getFloatTy());
+            return IR->getBuilder()->CreateSIToFP(ArgValue, IR->f32());
         } else if (ArgType->isPointerTy()) {
-            llvm::Function* atofFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("atof");
+            llvm::Function* atofFunc = IR->getModule()->getFunction("atof");
             if (!atofFunc) {
                 llvm::FunctionType* atofType = llvm::FunctionType::get(
-                    llvm::Type::getDoubleTy(Builder.getContext()),
-                    {llvm::PointerType::get(llvm::Type::getInt8Ty(Builder.getContext()), 0)},
+                    IR->f64(),
+                    {IR->ptr(IR->i8())},
                     false
                 );
-                atofFunc = llvm::Function::Create(atofType, llvm::Function::ExternalLinkage, "atof", Builder.GetInsertBlock()->getParent()->getParent());
+                atofFunc = llvm::Function::Create(atofType, llvm::Function::ExternalLinkage, "atof", IR->getModule());
             }
-            llvm::Value* doubleResult = Builder.CreateCall(atofFunc, {ArgValue});
-            return Builder.CreateFPTrunc(doubleResult, Builder.getFloatTy());
+            llvm::Value* doubleResult = IR->call(atofFunc, {ArgValue});
+            return IR->floatCast(doubleResult, IR->f32());
         } else {
             Write("Expression Generation", "Unsupported argument type for float function" + Location, 2, true, true, "");
             return nullptr;
         }
     };
 
-    Builtins["len"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["len"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for len function", 2, true, true, "");
             return nullptr;
@@ -362,6 +355,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
+<<<<<<< HEAD
         if (args[0]->type == NodeType::ArrayAccess) {
             auto* AccessNodePtr = static_cast<ArrayAccessNode*>(args[0].get());
             if (!AccessNodePtr) {
@@ -462,6 +456,8 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             }
         }
         
+=======
+>>>>>>> main
         if (args[0]->type == NodeType::Identifier) {
             auto* IdentifierNodePtr = static_cast<IdentifierNode*>(args[0].get());
             if (!IdentifierNodePtr) {
@@ -469,14 +465,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
                 return nullptr;
             }
             
-            llvm::Value* varPtr = nullptr;
-            for (auto it = SymbolStack.rbegin(); it != SymbolStack.rend(); ++it) {
-                auto found = it->find(IdentifierNodePtr->name);
-                if (found != it->end()) {
-                    varPtr = found->second;
-                    break;
-                }
-            }
+            llvm::Value* varPtr = IR->getVar(IdentifierNodePtr->name);
             
             if (!varPtr) {
                 Write("Expression Generation", "Undefined identifier: " + IdentifierNodePtr->name + Location, 2, true, true, "");
@@ -491,6 +480,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
             
             llvm::Type* allocatedType = allocaInst->getAllocatedType();
             
+<<<<<<< HEAD
             if (allocatedType->isPointerTy()) {
                 llvm::Value* loadedPtr = Builder.CreateLoad(allocatedType, allocaInst);
                 if (loadedPtr->getType() == llvm::PointerType::get(Builder.getInt8Ty(), 0)) {
@@ -512,6 +502,8 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
                 }
             }
             
+=======
+>>>>>>> main
             if (allocatedType->isArrayTy()) {
                 llvm::ArrayType* arrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
                 if (!arrayType) {
@@ -520,14 +512,78 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
                 }
                 
                 uint64_t arraySize = arrayType->getNumElements();
-                return llvm::ConstantInt::get(Builder.getInt32Ty(), arraySize);
+                return IR->constI32(arraySize);
             }
             
-            Write("Expression Generation", "Unsupported type for len function: " + IdentifierNodePtr->name + Location, 2, true, true, "");
+            if (allocatedType->isPointerTy()) {
+                llvm::Value* loadedPtr = IR->load(allocaInst);
+                
+                if (loadedPtr->getType() == IR->ptr(IR->i8())) {
+                    llvm::Function* strlenFunc = IR->getModule()->getFunction("strlen");
+                    if (!strlenFunc) {
+                        llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                            IR->i64(),
+                            {IR->ptr(IR->i8())},
+                            false
+                        );
+                        strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", IR->getModule());
+                    }
+                    
+                    llvm::Value* length = IR->call(strlenFunc, {loadedPtr});
+                    return IR->intCast(length, IR->i32());
+                } else {
+                    return IR->constI32(-1);
+                }
+            }
+            
+            if (allocatedType->isIntegerTy() || allocatedType->isFloatingPointTy()) {
+                return IR->constI32(1);
+            }
+            
+            Write("Expression Generation", "Cannot get length of variable: " + IdentifierNodePtr->name + Location, 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        if (args[0]->type == NodeType::ArrayAccess) {
+            auto* ArrayAccessNodePtr = static_cast<ArrayAccessNode*>(args[0].get());
+            if (!ArrayAccessNodePtr) {
+                Write("Expression Generation", "Failed to cast to ArrayAccessNode" + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Value* arrayPtr = IR->getVar(ArrayAccessNodePtr->identifier);
+            if (!arrayPtr) {
+                Write("Expression Generation", "Undefined array identifier: " + ArrayAccessNodePtr->identifier + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::AllocaInst* allocaInst = llvm::dyn_cast<llvm::AllocaInst>(arrayPtr);
+            if (!allocaInst) {
+                Write("Expression Generation", "Array identifier is not an allocated variable: " + ArrayAccessNodePtr->identifier + Location, 2, true, true, "");
+                return nullptr;
+            }
+            
+            llvm::Type* allocatedType = allocaInst->getAllocatedType();
+            
+            if (allocatedType->isArrayTy()) {
+                llvm::ArrayType* outerArrayType = llvm::dyn_cast<llvm::ArrayType>(allocatedType);
+                if (outerArrayType) {
+                    llvm::Type* elementType = outerArrayType->getElementType();
+                    if (elementType->isArrayTy()) {
+                        llvm::ArrayType* innerArrayType = llvm::dyn_cast<llvm::ArrayType>(elementType);
+                        if (innerArrayType) {
+                            uint64_t innerSize = innerArrayType->getNumElements();
+                            return IR->constI32(innerSize);
+                        }
+                    }
+                }
+            }
+            
+            Write("Expression Generation", "Cannot determine length of array access" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         
         if (!ArgValue) {
             Write("Expression Generation", "Invalid argument expression for len" + Location, 2, true, true, "");
@@ -535,6 +591,7 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         }
         
         if (ArgValue->getType()->isPointerTy()) {
+<<<<<<< HEAD
             if (ArgValue->getType() == llvm::PointerType::get(Builder.getInt8Ty(), 0)) {
                 llvm::Function* strlenFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("strlen");
                 if (!strlenFunc) {
@@ -552,11 +609,25 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
                 llvm::Value* elementSize = llvm::ConstantInt::get(Builder.getInt32Ty(), 4);
                 return Builder.CreateUDiv(sizeBytes, elementSize);
             }
+=======
+            llvm::Function* strlenFunc = IR->getModule()->getFunction("strlen");
+            if (!strlenFunc) {
+                llvm::FunctionType* strlenType = llvm::FunctionType::get(
+                    IR->i64(),
+                    {IR->ptr(IR->i8())},
+                    false
+                );
+                strlenFunc = llvm::Function::Create(strlenType, llvm::Function::ExternalLinkage, "strlen", IR->getModule());
+            }
+            llvm::Value* length = IR->call(strlenFunc, {ArgValue});
+            return IR->intCast(length, IR->i32());
+>>>>>>> main
         } else {
             Write("Expression Generation", "Unsupported argument type for len function" + Location, 2, true, true, "");
             return nullptr;
         }
     };
+<<<<<<< HEAD
 
     Builtins["malloc"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
@@ -657,12 +728,16 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
     };
 
     Builtins["char"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+=======
+    
+    Builtins["char"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+>>>>>>> main
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for char function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -675,43 +750,43 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         if (ArgType->isIntegerTy(8)) {
             return ArgValue;
         } else if (ArgType->isIntegerTy()) {
-            return Builder.CreateTrunc(ArgValue, Builder.getInt8Ty());
+            return IR->intCast(ArgValue, IR->i8());
         } else {
             Write("Expression Generation", "Unsupported argument type for char function" + Location, 2, true, true, "");
             return nullptr;
         }
     };
 
-    Builtins["exit"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
-        llvm::Function* exitFunc = Builder.GetInsertBlock()->getParent()->getParent()->getFunction("exit");
+    Builtins["exit"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+        llvm::Function* exitFunc = IR->getModule()->getFunction("exit");
         if (!exitFunc) {
             llvm::FunctionType* exitType = llvm::FunctionType::get(
-                llvm::Type::getVoidTy(Builder.getContext()),
-                {llvm::Type::getInt32Ty(Builder.getContext())},
+                IR->void_t(),
+                {IR->i32()},
                 false
             );
-            exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", Builder.GetInsertBlock()->getParent()->getParent());
+            exitFunc = llvm::Function::Create(exitType, llvm::Function::ExternalLinkage, "exit", IR->getModule());
         }
         
-        llvm::Value* exitCode = llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+        llvm::Value* exitCode = IR->constI32(0);
         if (!args.empty()) {
-            llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+            llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
             if (ArgValue && ArgValue->getType()->isIntegerTy(32)) {
                 exitCode = ArgValue;
             }
         }
         
-        Builder.CreateCall(exitFunc, {exitCode});
-        return llvm::ConstantInt::get(Builder.getInt32Ty(), 0);
+        IR->call(exitFunc, {exitCode});
+        return IR->constI32(0);
     };
 
-    Builtins["bool"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, llvm::IRBuilder<>& Builder, ScopeStack& SymbolStack, FunctionSymbols& Methods) -> llvm::Value* {
+    Builtins["bool"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
         if (args.empty()) {
             Write("Expression Generation", "Empty arguments for bool function", 2, true, true, "");
             return nullptr;
         }
         
-        llvm::Value* ArgValue = GenerateExpression(args[0], Builder, SymbolStack, Methods);
+        llvm::Value* ArgValue = GenerateExpression(args[0], IR, Methods);
         std::string Location = " at line " + std::to_string(args[0]->token.line) + ", column " + std::to_string(args[0]->token.column);
         
         if (!ArgValue) {
@@ -724,11 +799,11 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         if (ArgType->isIntegerTy(1)) {
             return ArgValue;
         } else if (ArgType->isIntegerTy()) {
-            return Builder.CreateICmpNE(ArgValue, llvm::ConstantInt::get(ArgType, 0));
+            return IR->ne(ArgValue, llvm::ConstantInt::get(ArgType, 0));
         } else if (ArgType->isFloatingPointTy()) {
-            return Builder.CreateFCmpONE(ArgValue, llvm::ConstantFP::get(ArgType, 0.0));
+            return IR->getBuilder()->CreateFCmpONE(ArgValue, llvm::ConstantFP::get(ArgType, 0.0));
         } else if (ArgType->isPointerTy()) {
-            return Builder.CreateICmpNE(ArgValue, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ArgType)));
+            return IR->ne(ArgValue, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ArgType)));
         } else {
             Write("Expression Generation", "Unsupported argument type for bool function" + Location, 2, true, true, "");
             return nullptr;
