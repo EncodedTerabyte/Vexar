@@ -3,6 +3,7 @@ build/
 buildsystem/
 lib/
 bin/
+.vscode/
 *.ll
 *.o
 *.exe

@@ -1,6 +1,12 @@
-# Auto detect text files and perform LF normalization
 * text=auto
-*.vex linguist-language=Vexar
-*.vx linguist-language=Vexar
-*.vxr linguist-language=Vexar
-*.vexar linguist-language=Vexar
+*.vex linguist-language=C linguist-detectable=true
+*.vx linguist-language=C linguist-detectable=true
+*.vxr linguist-language=C linguist-detectable=true
+*.vexar linguist-language=C linguist-detectable=true
+*.c linguist-language=C
+*.cpp linguist-language=C++
+*.cc linguist-language=C++
+*.h linguist-language=C
+*.hh linguist-language=C++
+source/optimization/*.c linguist-language=C
+source/optimization/* linguist-vendored=false
