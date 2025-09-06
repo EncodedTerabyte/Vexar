@@ -1,10 +1,8 @@
 * text=auto
-examples/test.vx linguist-language=C
-*.vex linguist-language=C linguist-detectable=true linguist-generated=false
-*.vx linguist-language=C linguist-detectable=true linguist-generated=false
-*.vxx linguist-language=C linguist-detectable=true linguist-generated=false
-*.vxr linguist-language=C linguist-detectable=true linguist-generated=false
-*.vexar linguist-language=C linguist-detectable=true linguist-generated=false
+*.vx linguist-vendored
+*.vex linguist-vendored
+*.vxr linguist-vendored
+*.vexar linguist-vendored
 *.c linguist-language=C linguist-detectable=true
 *.cpp linguist-language=C++
 *.cc linguist-language=C++
