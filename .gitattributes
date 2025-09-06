@@ -1,4 +1,5 @@
 * text=auto
+examples/test.vx linguist-language=C
 *.vex linguist-language=C linguist-detectable=true linguist-generated=false
 *.vx linguist-language=C linguist-detectable=true linguist-generated=false
 *.vxx linguist-language=C linguist-detectable=true linguist-generated=false
