@@ -28,7 +28,7 @@
 
 int main(int argc, char* argv[]) {
     auto V_C_START = std::chrono::high_resolution_clock::now();
-    Write("Vexar CLI", "Initialized Vexar CLI", 0, true, true);
+    Write("Vexar CLI", "Initialized Vexar CLI", 0, false, true);
 
     if (argc == 1) {
         Write("CLI", "No input file specified", 2, true, true);
@@ -119,6 +119,9 @@ int main(int argc, char* argv[]) {
     llvm::Module* Mode = Gen.GetModulePtr();
     Gen.BuildModule();
 
+    auto V_C_END = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = V_C_END - V_C_START;
+
     ModuleAnalyzer Analyzer(Mode);
 
     if (Instructions->DumpBIN) {   
@@ -177,9 +180,6 @@ int main(int argc, char* argv[]) {
         Gen.OptimiseModule();
         Gen.CompileTriple();
     }
-    
-    auto V_C_END = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = V_C_END - V_C_START;
 
     if (Instructions->Verbose) {
         Write("CLI", "Code Generation Complete In " + std::to_string(elapsed.count()) + "s", 3, true, true);

@@ -41,7 +41,7 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
     if (tok.value == "for") {
         return ForStatementExpression::Parse(parser);
     }
-    if (tok.value == "ret") {
+    if (tok.value == "ret" || tok.value == "return") {
         return ReturnExpression::Parse(parser);
     }
     if (tok.value == "func") {
@@ -58,12 +58,7 @@ std::unique_ptr<ASTNode> Main::ParseExpression(Parser& parser, int precedence, c
         }
     }
     if (tok.type == TokenType::Keyword && (tok.value == "inline" || tok.value == "always_inline")) {
-        auto Node = std::make_unique<InlinePreprocessor>();
-        Node->line = tok.line;
-        Node->column = tok.column;
-        Node->type = NodeType::InlinePreProc;
-        parser.consume(TokenType::Keyword, tok.value);
-        return Node;
+        return InlineExpression::Parse(parser);
     }
     if (tok.value == ";") {
         auto Node = std::make_unique<SemiColonNode>();

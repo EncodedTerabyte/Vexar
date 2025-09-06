@@ -134,28 +134,54 @@ void InitializeBuiltinSymbols(BuiltinSymbols& Builtins) {
         return IR->constI32(0);
     };
 
-
-    Builtins["input"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
-        llvm::Function* scanfFunc = IR->getModule()->getFunction("scanf");
-        if (!scanfFunc) {
-            llvm::FunctionType* scanfType = llvm::FunctionType::get(
-                IR->i32(),
-                {IR->ptr(IR->i8())},
-                true
+    Builtins["readLine"] = [](const std::vector<std::unique_ptr<ASTNode>>& args, AeroIR* IR, FunctionSymbols& Methods) -> llvm::Value* {
+        llvm::Function* fgetsFunc = IR->getModule()->getFunction("fgets");
+        if (!fgetsFunc) {
+            llvm::FunctionType* fgetsType = llvm::FunctionType::get(
+                IR->ptr(IR->i8()),
+                {IR->ptr(IR->i8()), IR->i32(), IR->ptr(IR->i8())},
+                false
             );
-            scanfFunc = llvm::Function::Create(scanfType, llvm::Function::ExternalLinkage, "scanf", IR->getModule());
+            fgetsFunc = llvm::Function::Create(fgetsType, llvm::Function::ExternalLinkage, "fgets", IR->getModule());
         }
         
-        llvm::Value* bufferSize = IR->constI64(256);
-        llvm::Value* bufferPtr = IR->malloc(IR->i8(), bufferSize);
-        if (!bufferPtr) {
-            Write("Expression Generation", "Failed to allocate buffer for input function", 2, true, true, "");
-            return nullptr;
+        llvm::Function* stdinFunc = IR->getModule()->getFunction("__acrt_iob_func");
+        if (!stdinFunc) {
+            llvm::FunctionType* stdinType = llvm::FunctionType::get(
+                IR->ptr(IR->i8()),
+                {IR->i32()},
+                false
+            );
+            stdinFunc = llvm::Function::Create(stdinType, llvm::Function::ExternalLinkage, "__acrt_iob_func", IR->getModule());
         }
         
-        llvm::Value* formatStr = IR->constString("%255s");
-        IR->call(scanfFunc, {formatStr, bufferPtr});
+        llvm::Function* strchrFunc = IR->getModule()->getFunction("strchr");
+        if (!strchrFunc) {
+            llvm::FunctionType* strchrType = llvm::FunctionType::get(
+                IR->ptr(IR->i8()),
+                {IR->ptr(IR->i8()), IR->i32()},
+                false
+            );
+            strchrFunc = llvm::Function::Create(strchrType, llvm::Function::ExternalLinkage, "strchr", IR->getModule());
+        }
         
+        llvm::Value* bufferPtr = IR->malloc(IR->i8(), IR->constI64(256));
+        llvm::Value* stdin_ptr = IR->call(stdinFunc, {IR->constI32(0)});
+        IR->call(fgetsFunc, {bufferPtr, IR->constI32(255), stdin_ptr});
+        
+        llvm::Value* newlinePtr = IR->call(strchrFunc, {bufferPtr, IR->constI32('\n')});
+        llvm::Value* hasNewline = IR->ne(newlinePtr, llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(IR->ptr(IR->i8()))));
+        
+        llvm::BasicBlock* removeNewline = IR->createBlock("remove_newline");
+        llvm::BasicBlock* done = IR->createBlock("input_done");
+        
+        IR->condBranch(hasNewline, removeNewline, done);
+        
+        IR->setInsertPoint(removeNewline);
+        IR->store(IR->constI8('\0'), newlinePtr);
+        IR->branch(done);
+        
+        IR->setInsertPoint(done);
         return bufferPtr;
     };
 

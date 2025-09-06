@@ -61,24 +61,44 @@ std::vector<Token> Tokenize(const std::map<unsigned int, std::string>& FileConte
                 if (i < line.size()) ++i;
                 tokens.push_back(tok);
             }
-            else if (isalpha(c) || c == '_') {
+            else if (isalpha(c) || c == '_' || (c == '%' && i + 1 < line.size() && (isalpha(line[i + 1]) || line[i + 1] == '_'))) {
                 size_t start = i;
+                bool isRegister = (c == '%');
+                if (isRegister) ++i;
+                
                 while (i < line.size() && (isalnum(line[i]) || line[i] == '_')) ++i;
                 tok.value = line.substr(start, i - start);
-                tok.type = Keywords.count(tok.value) ? TokenType::Keyword : TokenType::Identifier;
+                
+                if (isRegister) {
+                    tok.type = TokenType::Register;
+                } else {
+                    tok.type = Keywords.count(tok.value) ? TokenType::Keyword : TokenType::Identifier;
+                }
                 tokens.push_back(tok);
             }
-            else if (isdigit(c)) {
+            else if (isdigit(c) || (c == '$' && i + 1 < line.size() && isdigit(line[i + 1]))) {
                 size_t start = i;
+                bool isImmediate = (c == '$');
+                if (isImmediate) ++i;
+                
                 bool isFloat = false;
-                while (i < line.size() && isdigit(line[i])) ++i;
-                if (i < line.size() && line[i] == '.') {
-                    ++i;
-                    isFloat = true;
+                bool isHex = false;
+                
+                if (i < line.size() && line[i] == '0' && i + 1 < line.size() && (line[i + 1] == 'x' || line[i + 1] == 'X')) {
+                    isHex = true;
+                    i += 2;
+                    while (i < line.size() && isxdigit(line[i])) ++i;
+                } else {
                     while (i < line.size() && isdigit(line[i])) ++i;
+                    if (i < line.size() && line[i] == '.' && !isImmediate) {
+                        ++i;
+                        isFloat = true;
+                        while (i < line.size() && isdigit(line[i])) ++i;
+                    }
                 }
+                
                 tok.value = line.substr(start, i - start);
-                tok.type = isFloat ? TokenType::Float : TokenType::Number;
+                tok.type = isImmediate ? TokenType::Immediate : (isFloat ? TokenType::Float : TokenType::Number);
                 tokens.push_back(tok);
             }
             else {

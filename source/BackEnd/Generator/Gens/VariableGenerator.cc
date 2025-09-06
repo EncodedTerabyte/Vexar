@@ -16,7 +16,7 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
     llvm::Type* BaseType = nullptr;
     bool isArray = false;
     
-    if (Type == "auto" || Type.empty()) {
+   if (Type == "auto" || Type.empty()) {
         if (!Node->value) {
             Write("Variable Generation", "Cannot declare variable without explicit type and without initialization: " + Name + Location, 2, true, true, "");
             return;
@@ -25,6 +25,23 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
         if (Node->value->type == NodeType::Array) {
             BaseType = IR->int_t();
             isArray = true;
+        } else if (Node->value->type == NodeType::Cast) {
+            CastNode* castNode = static_cast<CastNode*>(Node->value.get());
+            if (castNode->targetType == "int") {
+                BaseType = IR->int_t();
+            } else if (castNode->targetType == "float") {
+                BaseType = IR->float_t();
+            } else if (castNode->targetType == "double") {
+                BaseType = IR->double_t();
+            } else if (castNode->targetType == "char") {
+                BaseType = IR->char_t();
+            } else if (castNode->targetType == "bool") {
+                BaseType = IR->bool_t();
+            } else if (castNode->targetType == "string") {
+                BaseType = IR->string_t();
+            } else {
+                BaseType = IR->int_t();
+            }
         } else {
             llvm::Value* tempValue = GenerateExpression(Node->value, IR, Methods);
             if (!tempValue) {
@@ -34,7 +51,7 @@ void GenerateVariable(VariableNode* Node, AeroIR* IR, FunctionSymbols& Methods) 
             
             BaseType = tempValue->getType();
         }
-    } else {
+    }else {
         std::string baseTypeName = Type;
         if (Type.find("[]") != std::string::npos) {
             baseTypeName = Type.substr(0, Type.find("[]"));

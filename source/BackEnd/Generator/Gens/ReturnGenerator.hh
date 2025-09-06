@@ -3,4 +3,4 @@
 #include "../Helper/Types.hh"
 #include "../LLVMHeader.hh"
 
-llvm::Value* GenerateReturn(const ReturnNode* Ret, AeroIR* IR, FunctionSymbols& Methods);
+llvm::Value* GenerateReturn(ReturnNode* Ret, AeroIR* IR, FunctionSymbols& Methods);

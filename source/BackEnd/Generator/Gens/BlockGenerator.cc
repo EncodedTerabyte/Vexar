@@ -1,6 +1,7 @@
 #include "CompoundAssignmentGenerator.hh"
 #include "UnaryAssignmentGenerator.hh"
 #include "ArrayAssignmentGenerator.hh"
+#include "InlineLanguageGenerator.hh"
 #include "AssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
 #include "ConditionGenerator.hh"
@@ -133,6 +134,17 @@ void ProcessStatement(const std::unique_ptr<ASTNode>& Statement, AeroIR* IR, Fun
             Write("Block Generator", "Invalid for statement" + StmtLocation, 2, true, true, "");
             return;
         }
+    } else if (Statement->type == NodeType::InlineCodeBlock) { 
+        auto* ICN = static_cast<InlineCodeNode*>(Statement.get());
+        if (!ICN) {
+            Write("Block Generator", "Failed to cast to InlineCodeNode" + StmtLocation, 2, true, true, "");
+            return;
+        }
+        llvm::Value* ICNResult = GenerateInlineLanguage(ICN, IR, Methods);
+        if (!ICNResult) {
+            Write("Block Generator", "Invalid inline statement" + StmtLocation, 2, true, true, "");
+            return;
+        }      
     } else {
         Write("Block Generator", "Unsupported statement type: " + std::to_string(static_cast<int>(Statement->type)) + StmtLocation, 2, true, true, "");
     }

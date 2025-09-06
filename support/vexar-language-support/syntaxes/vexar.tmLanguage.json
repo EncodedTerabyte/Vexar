@@ -46,11 +46,11 @@
       "patterns": [
         {
           "name": "keyword.control.vexar",
-          "match": "\\b(if|else|while|for|ret|foreach|repeat|until|do|from)\\b"
+          "match": "\\b(if|else|while|for|ret|return|foreach|repeat|until|do|from|asm|assembly|cxx|c|volatile|mov|movl|movss|movsd|movaps|movapd|movq|movdqa|movsb|lea|push|pop|add|sub|mul|imul|div|idiv|inc|dec|and|or|xor|not|neg|cmp|test|jmp|je|jz|jne|jnz|jg|jnle|jl|jnge|ja|jnbe|jb|jnae|call|nop|enter|leave|syscall|hlt|cpuid|fld|fst|fstp|fadd|fsub|fmul|fdiv|fcom|fcomp|fxch|fsqrt|fabs|fchs|finit|fwait|addss|addsd|subss|subsd|mulss|mulsd|divss|divsd|sqrtss|sqrtsd|cvtsi2ss|cvtsi2sd|cvtss2sd|cvtsd2ss|ucomiss|ucomisd|vaddss|vaddsd|vaddps|vaddpd|vmulss|vmulsd|vmulps|vmulpd|vdivss|vdivsd|vdivps|vdivpd|vsqrtss|vsqrtsd|vsqrtps|vsqrtpd|eax|ebx|ecx|edx|esi|edi|esp|ebp|rax|rbx|rcx|rdx|rsi|rdi|rsp|rbp|r8|r9|r10|r11|r12|r13|r14|r15|st\\([0-7]\\)|mm[0-7]|xmm[0-9]|ymm[0-9]|zmm[0-9]|paddb|psubw|pmullw|std|cld|rep|stosb|shl|shr|sysret|rdtsc|lock|xchg|addl|jle|jge|fcompp|pushq|subq|__asm__|__c__|C|__c++__|__C++__|__CC__|__cc__|__cxx__|__Cxx__|C++)\\b"
         },
         {
           "name": "keyword.declaration.vexar",
-          "match": "\\b(var|func|import|break|always_inline|inline)\\b"
+          "match": "\\b(var|func|import|break|always_inline|inline|#include)\\b"
         },
         {
           "name": "keyword.other.vexar",

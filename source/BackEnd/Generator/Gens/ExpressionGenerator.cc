@@ -7,7 +7,7 @@
 #include "UnaryOpGenerator.hh"
 #include "CompoundAssignmentGenerator.hh"
 #include "ArrayExpressionGenerator.hh"
-
+#include "InlineLanguageGenerator.hh"
 #include <cmath>
 #include <functional>
 #include <unordered_map>
@@ -108,6 +108,18 @@ llvm::Value* GenerateExpression(const std::unique_ptr<ASTNode>& Expr, AeroIR* IR
         return Result;
     } else if (Expr->type == NodeType::Array || Expr->type == NodeType::ArrayAccess) {
         return GenerateArrayExpression(Expr, IR, Methods);
+    } else if (Expr->type == NodeType::InlineCodeBlock) {
+        auto* ICN = static_cast<InlineCodeNode*>(Expr.get());
+        if (!ICN) {
+            Write("Expression Generation", "Failed to cast to InlineCodeNode" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        llvm::Value* Result = GenerateInlineLanguage(ICN, IR, Methods);
+        if (!Result) {
+            Write("Expression Generation", "Invalid inline code block" + Location, 2, true, true, "");
+            return nullptr;
+        }
+        return Result;
     } else if (Expr->type == NodeType::Boolean) {
         auto* BoolNode = static_cast<BooleanNode*>(Expr.get());
         if (!BoolNode) {

@@ -1,8 +1,8 @@
 #include "Menu.hh"
 
 void PrintVesion() {
-    std::cout << "Vexar (Built & Officially Owned by EncodedTerabyte) 0.1.0 INDEV " << std::endl;
-    std::cout << "Copyright (C) 2025 Vexar Source License." << std::endl;
+    std::cout << "\nVexar (Built & Officially Owned by EncodedTerabyte) 0.1.0 INDEV \n";
+    std::cout << "Copyright (C) 2025 Vexar Source License. \n";
 }
 
 void PrintHelpMenu() {
@@ -23,7 +23,7 @@ void PrintHelpMenu() {
     std::cout << "  -O[level]               Set optimization level (0-5)\n\n";
 
     std::cout << "Analysis Options:\n";
-    std::cout << "  -f, --full-analysis      Perform full module analysis (all options)\n";
+    std::cout << "  -f, --full-analysis       Perform full module analysis (all options)\n";
     std::cout << "  -b, --bin                 Perform binary analysis\n";
     std::cout << "  -vec, --vectorization     Analyze vectorization opportunities\n";
     std::cout << "  -opt, --optimizations     Analyze optimizations applied\n";
@@ -45,8 +45,8 @@ void PrintHelpMenu() {
     std::cout << "  vexar hello.vxr                 Compile 'hello.vxr' into an executable\n";
     std::cout << "  vexar -r hello.vxr              Compile and run immediately\n";
     std::cout << "  vexar -c test.vxr               Check syntax only\n";
-    std::cout << "  vexar --print-ast hello.vxr     Show AST of program\n";
-    std::cout << "  vexar --print-tokens hello.vxr  Show tokens of program\n\n";
+    std::cout << "  vexar -a hello.vxr              Show AST of program\n";
+    std::cout << "  vexar -t hello.vxr              Show tokens of program\n\n";
 }
 
 void PrintTargets() {

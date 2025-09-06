@@ -390,6 +390,9 @@ llvm::Value* AeroIR::eq(llvm::Value* lhs, llvm::Value* rhs) {
 }
 
 llvm::Value* AeroIR::ne(llvm::Value* lhs, llvm::Value* rhs) {
+    if (lhs->getType()->isPointerTy() || rhs->getType()->isPointerTy()) {
+        return builder->CreateICmpNE(lhs, rhs);
+    }
     return lhs->getType()->isIntegerTy() ? 
            builder->CreateICmpNE(lhs, rhs) : builder->CreateFCmpONE(lhs, rhs);
 }

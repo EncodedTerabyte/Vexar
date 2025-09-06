@@ -38,6 +38,7 @@ struct NodeType {
     static constexpr int MemberAccess = 28;
     static constexpr int For = 29;
     static constexpr int ForEach = 30;
+    static constexpr int InlineCodeBlock = 31;
 };
 
 struct ASTNode {
@@ -582,6 +583,25 @@ struct ForEachNode : ASTNode {
             oss << "\n" << body->get(childPrefix, true);
         }
         
+        return oss.str();
+    }
+};
+
+struct InlineCodeNode : ASTNode {
+    std::string raw_code;
+    std::string lang;
+    int line;
+    int column;
+    bool IsVolatile;
+
+    InlineCodeNode() { type = NodeType::InlineCodeBlock; }
+
+    std::string get(const std::string& prefix = "", bool isLast = true) const override {
+        std::ostringstream oss;
+        oss << branch(prefix, isLast) << "[Inline " << lang << "]";
+        if (!raw_code.empty()) {
+            oss << "\n" << nextPrefix(prefix, isLast) << "Code: " << raw_code;
+        }
         return oss.str();
     }
 };

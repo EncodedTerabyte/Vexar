@@ -70,8 +70,6 @@ llvm::Function* GenerateFunction(FunctionNode* Node, AeroIR* IR, FunctionSymbols
         Function->addFnAttr(llvm::Attribute::AlwaysInline);
     } else if (Node->isInlined) {
         Function->addFnAttr(llvm::Attribute::InlineHint);
-    } else {
-        Function->addFnAttr(llvm::Attribute::NoInline);
     }
 
     int paramIndex = 0;

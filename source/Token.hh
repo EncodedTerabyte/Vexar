@@ -18,6 +18,8 @@ struct TokenType {
     static constexpr int Operator     = 6;
     static constexpr int Delimiter    = 7;
     static constexpr int EndOfFile    = 8;
+    static constexpr int Register     = 9;
+    static constexpr int Immediate    = 10;
 };
 
 struct Token {
@@ -29,19 +31,6 @@ struct Token {
 
 std::ostream& operator<<(std::ostream& os, const Token& tok);
 
-const std::set<std::string> Keywords = {"var", "if", "while", "func", "ret", "inline", "always_inline", "break", "for", "foreach"};
-
-const std::set<std::string> Operators = {
-    "+", "-", "*", "/", "%",     // arithmetic
-    "&&", "||",                  // logical
-    "~", "!",                    // unary
-    "=", "==", "!=", ":=",       // assignment / equality
-    "<", "<=", ">", ">=",        // relational
-    "++", "--",                  // increment / decrement
-    "+=", "-=", "*=", "/=" ,     // compount operators
-    "<<", ">>", "|", "&", "^"    // bitwise operators
-};
-
-const std::set<char> Delimiters = {
-    '(', ')', '{', '}', '[', ']', ',', ';', ':', '.', '\'', '"', '`'
-};
+extern std::set<std::string> Keywords;
+extern std::set<std::string> Operators;
+extern std::set<char> Delimiters;

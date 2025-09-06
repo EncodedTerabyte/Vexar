@@ -84,7 +84,7 @@ void Generator::CompileTriple() {
         Target = this->ASTPkg.CompilerTarget;
     }
 
-    CreatePlatformBinary(this->TakeModule(), Target, this->ASTPkg.RunAfterCompile, this->ASTPkg.OutputFile);
+    CreatePlatformBinary(this->TakeModule(), Target, this->ASTPkg.RunAfterCompile, this->ASTPkg.Optimisation, this->ASTPkg.OutputFile);
 }
 
 bool Generator::ValidateModule() {
@@ -97,7 +97,7 @@ bool Generator::ValidateModule() {
         ErrorStream.flush();
         return false;
     } 
-
+    
     return true;
 }
 
@@ -143,8 +143,37 @@ void Generator::OptimiseModule() {
     }
     
     llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(LLVMOptLevel);
+    MPM.addPass(llvm::VerifierPass());
+
+    if (OptLevel == 3) {
+        for (int i = 0; i < 2; ++i) {
+            llvm::CGSCCPassManager CGPM;
+            CGPM.addPass(llvm::InlinerPass());
+            MPM.addPass(llvm::createModuleToPostOrderCGSCCPassAdaptor(std::move(CGPM)));
+            
+            MPM.addPass(llvm::GlobalDCEPass());
+
+            llvm::FunctionPassManager SCCPFPM;
+            SCCPFPM.addPass(llvm::SCCPPass());
+            MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(SCCPFPM)));
+        }
+    }
     
     if (OptLevel >= 4) {
+        llvm::FunctionPassManager FPM;
+        FPM.addPass(llvm::SCCPPass());
+        MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+        
+        MPM.addPass(llvm::ConstantMergePass());
+        MPM.addPass(llvm::GlobalDCEPass());
+        MPM.addPass(llvm::StripDeadPrototypesPass());
+        MPM.addPass(llvm::DeadArgumentEliminationPass());
+        MPM.addPass(llvm::GlobalOptPass());
+        
+        llvm::CGSCCPassManager CGPM;
+        CGPM.addPass(llvm::InlinerPass());
+        MPM.addPass(llvm::createModuleToPostOrderCGSCCPassAdaptor(std::move(CGPM)));
+        
         llvm::ModulePassManager ExtraMPM = PB.buildPerModuleDefaultPipeline(LLVMOptLevel);
         MPM.addPass(std::move(ExtraMPM));
     }

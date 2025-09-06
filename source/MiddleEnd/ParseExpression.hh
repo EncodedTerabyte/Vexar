@@ -18,7 +18,7 @@
 #include "Expressions/ForStatementExpression.hh"
 #include "Expressions/ReturnExpression.hh"
 #include "Expressions/FunctionExpression.hh"
-
+#include "Expressions/InlineExpression.hh"
 // nodes
 #include "Nodes/BlockNode.hh"
 #include "Nodes/ConditionNode.hh"

@@ -1,7 +1,7 @@
 #include "UnaryAssignmentGenerator.hh"
 #include "ExpressionGenerator.hh"
 
-llvm::Value* GenerateReturn(const ReturnNode* Ret, AeroIR* IR, FunctionSymbols& Methods) { 
+llvm::Value* GenerateReturn(ReturnNode* Ret, AeroIR* IR, FunctionSymbols& Methods) { 
     if (!Ret) {
         Write("Return Generator", "Null ReturnNode pointer", 2, true, true, "");
         return nullptr;

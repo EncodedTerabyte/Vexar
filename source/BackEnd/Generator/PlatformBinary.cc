@@ -3,7 +3,7 @@
 
 #include "../../Miscellaneous/conf/TargetMap.hh"
 
-void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Triple, bool RunAfterCompile, fs::path Output) {
+void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Triple, bool RunAfterCompile, int OptLevel, fs::path Output) {
     if (target_map.find(Triple) != target_map.end()) {
         Triple = target_map[Triple];
     }
@@ -230,14 +230,16 @@ void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Trip
     
     if (Triple == "x86_64-pc-windows-msvc") {
         TargetFlags = {"--target=x86_64-pc-windows-msvc"};
-        ExtraFlags = " -Xlinker /NODEFAULTLIB:libcmt -Xlinker /DEFAULTLIB:msvcrt.lib -Xlinker /DEFAULTLIB:legacy_stdio_definitions.lib -Xlinker /DEFAULTLIB:ucrt.lib -Xlinker /DEFAULTLIB:kernel32.lib";
+        ExtraFlags = " -Xlinker /NODEFAULTLIB:libcmt -Xlinker /DEFAULTLIB:msvcrt.lib -Xlinker /DEFAULTLIB:legacy_stdio_definitions.lib -Xlinker /DEFAULTLIB:ucrt.lib -Xlinker /DEFAULTLIB:kernel32.lib -Xlinker /DEFAULTLIB:user32.lib -Xlinker /DEFAULTLIB:gdi32.lib -Xlinker /DEFAULTLIB:shell32.lib";
     } else if (Triple == "x86_64-pc-windows-gnu") {
         TargetFlags = {"--target=x86_64-pc-windows-gnu"};
+        ExtraFlags = " -lkernel32 -luser32 -lgdi32 -lshell32";
     } else if (Triple == "i686-pc-windows-msvc") {
         TargetFlags = {"--target=i686-pc-windows-msvc"};
-        ExtraFlags = " -Xlinker /NODEFAULTLIB:libcmt -Xlinker /DEFAULTLIB:msvcrt.lib -Xlinker /DEFAULTLIB:legacy_stdio_definitions.lib -Xlinker /DEFAULTLIB:ucrt.lib -Xlinker /DEFAULTLIB:kernel32.lib";
+        ExtraFlags = " -Xlinker /NODEFAULTLIB:libcmt -Xlinker /DEFAULTLIB:msvcrt.lib -Xlinker /DEFAULTLIB:legacy_stdio_definitions.lib -Xlinker /DEFAULTLIB:ucrt.lib -Xlinker /DEFAULTLIB:kernel32.lib -Xlinker /DEFAULTLIB:user32.lib -Xlinker /DEFAULTLIB:gdi32.lib -Xlinker /DEFAULTLIB:shell32.lib";
     } else if (Triple == "aarch64-pc-windows-msvc") {
         TargetFlags = {"--target=aarch64-pc-windows-msvc"};
+        ExtraFlags = " -Xlinker /DEFAULTLIB:kernel32.lib -Xlinker /DEFAULTLIB:user32.lib -Xlinker /DEFAULTLIB:gdi32.lib -Xlinker /DEFAULTLIB:shell32.lib";
     } else if (Triple == "wasm32-unknown-unknown") {
         FinalOutput = OutputDir / (OutputName + ".wasm");
         TargetFlags = {"--target=wasm32-unknown-unknown", "-nostdlib", "-Wl,--no-entry"};

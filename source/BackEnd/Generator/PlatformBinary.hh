@@ -32,4 +32,4 @@ inline void runExecutable(const fs::path& OutputDir, const std::string& OutputNa
 #endif
 }
 
-void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Triple, bool RunAfterCompile, fs::path Output);
+void CreatePlatformBinary(std::unique_ptr<llvm::Module> Module, std::string Triple, bool RunAfterCompile, int OptLevel, fs::path Output);

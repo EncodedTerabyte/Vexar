@@ -47,3 +47,34 @@ func demo_strings(): int {
     ret 0
 }
 ```
+
+```go
+always_inline func doSum(x: int, y: int) {
+    inline __cc__ {
+        std::cout << "inline c++" << std::endl;
+
+        int result;
+        __asm__ volatile (
+            "movl %1, %%eax\n\t"
+            "addl %2, %%eax\n\t"
+            "movl %%eax, %0"
+            : "=r" (result)
+            : "r" ($x), "r" ($y)
+            : "eax"
+        );
+        std::cout << "Value: " << result << std::endl;
+    }
+}
+
+inline func main() {
+    print("Enter number: ")
+    var x = (int)readLine()
+    println("")
+
+    print("Enter number: ")
+    var y = (int)readLine()
+    println("")
+    
+    doSum(x, y);
+}
+```
