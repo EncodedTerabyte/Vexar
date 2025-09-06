@@ -1,27 +1,41 @@
-Vexar Source License (VSL)
+# Vexar Programming Language License
 Copyright (c) 2025 EncodedTerabyte
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to use, copy, modify, merge, publish, distribute, and sublicense copies of the Software, including for commercial purposes, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-1. Open Source Requirement
-   - Any fork, derivative work, or substantial usage of the Software must remain fully open source and licensed under this exact license.
-   - No alternative license may be applied to any fork or derivative, including modifications, adaptations, or usage of substantial portions of the code.
+## 1. Compiler and Tools License (MIT-Style)
+The Vexar compiler, runtime libraries, standard library, and development tools are licensed under permissive terms:
+- **Commercial Use Permitted**: Companies may use Vexar for proprietary software development
+- **No Source Disclosure Required**: Code compiled with Vexar does not need to be open source
+- **Redistribution Allowed**: The compiler may be redistributed and modified freely
 
-2. Free Distribution
-   - The Software, and all forks or derivatives, must be distributed entirely for free.
-   - Paid or restricted access models (freemium, donationware, gated features) that limit core functionality are not permitted.
+## 2. Compiler Source Code Requirements
+If you distribute a modified version of the Vexar **compiler itself** (not programs written in Vexar), you must:
+- **Provide Source**: Make the modified compiler source code available
+- **Maintain License**: Keep this same license on compiler modifications
+- **Credit Original**: Include attribution to the original Vexar project
 
-3. Optional Paid Addons
-   - Forks may offer paid, closed-source addons, extensions, or plugins only if:
-       * The base Software remains fully functional and usable without the paid components.
-       * Paid components do not restrict access to core features required for typical use.
-       * Paid components are supplementary, not essential to the primary functionality.
+## 3. Attribution Requirements
+Public distributions of the Vexar compiler must include:
+- **Copyright Notice**: "Contains Vexar Programming Language by EncodedTerabyte"
+- **License Copy**: Include this license text in documentation
+- **Repository Link**: Link to the original Vexar repository when practical
 
-4. Attribution
-   - Any public use or distribution of the Software or derivatives must credit:
-       * "EncodedTerabyte" as the original author.
-       * The original repository: "Vexar".
-       * Any forked repositories or derivative works utilized.
-   - Attribution is not required for unrelated third-party resources not covered by this license.
+## 4. Runtime Exception
+Programs compiled with Vexar, including:
+- Applications built using the Vexar compiler
+- Code linking against Vexar standard libraries
+- Binaries produced by the Vexar toolchain
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+**Are NOT subject to this license** and may be distributed under any terms, including proprietary licenses.
+
+## 5. Trademark
+"Vexar" is a trademark of EncodedTerabyte. You may use the name to refer to the language but not to endorse derived products without permission.
+
+## 6. Definitions
+- **"Software"**: The Vexar compiler, runtime system, standard libraries, and associated development tools
+- **"Vexar Programs"**: Source code written in the Vexar programming language
+- **"Compiled Output"**: Executable files, libraries, or other artifacts produced by the Vexar compiler
+
+## 7. Disclaimer
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
