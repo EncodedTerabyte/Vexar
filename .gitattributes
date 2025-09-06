@@ -1,8 +1,9 @@
 * text=auto
-*.vex linguist-language=C linguist-detectable=true
-*.vx linguist-language=C linguist-detectable=true
-*.vxr linguist-language=C linguist-detectable=true
-*.vexar linguist-language=C linguist-detectable=true
+*.vex linguist-language=C linguist-detectable=true linguist-generated=false
+*.vx linguist-language=C linguist-detectable=true linguist-generated=false
+*.vxx linguist-language=C linguist-detectable=true linguist-generated=false
+*.vxr linguist-language=C linguist-detectable=true linguist-generated=false
+*.vexar linguist-language=C linguist-detectable=true linguist-generated=false
 *.c linguist-language=C linguist-detectable=true
 *.cpp linguist-language=C++
 *.cc linguist-language=C++
